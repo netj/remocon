@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# remocon -- run given command remotely, tethering a workdir on a remote host to local git repo
+#
+# Author: Jaeho Shin <netj@sparcs.org>
+# Created: 2018-03-08
+##
+set -euo pipefail
+
+error() { echo >&2 "$@"; false; }
+warning() { echo >&2 "$@"; }
+
+# make sure we're in a git work tree
+$(git rev-parse --is-inside-work-tree) ||
+    error "$PWD: Not inside a git work tree"
+
+# find closest .remocon.conf
+conf=$(
+    until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
+    ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
+)
+
+# defaults to not running things remotely
+: ${remote:=localhost}
+ssh_opts=(
+    # share an ssh connection across invocation
+    -o ControlMaster=auto
+    -o ControlPath="${conf%.conf}.sock-%r@%h:%p"
+    -o ControlPersist=60
+)
+bash_opts=()
+if [[ -t 0 && -t 1 && -t 2 ]]; then
+    # when I/O/Err is a fully functional terminal
+    ssh_opts+=(-t)   # ask ssh for tty
+    bash_opts+=(-i)  # ask bash for an interactive shell
+fi
+
+! [[ -e "$conf" ]] || source "$conf"
+
+# a handy way to show what command is running
+# TODO option to quiet things
+x() { echo >&2 "$(echo -n '+'; printf ' %q' "$@")"; "$@"; }
+
+# a handy way to patch remote
+# See: https://github.com/netj/bpm/blob/master/plugin/git-helper
+git-tether-remote() {
+    (
+    set -euo pipefail
+    hostpath=$1; shift
+    case $hostpath in
+        (*:*) host=${hostpath%%:*} dir=${hostpath#*:};;
+        (*) error "$hostpath: host:path required";;
+    esac
+    commit=$(git rev-parse HEAD)
+    branch=$(git symbolic-ref --short HEAD)
+    x git push -q -f "$host:$dir" HEAD:"$branch" || {
+        x ssh "$host" "
+            set -eu; PS4='++ '; set -x
+            mkdir -p $(printf %q "$dir")
+            cd $(printf %q "$dir")
+            [[ -e .git ]] || git init
+        "
+        x git push -f "$host:$dir" HEAD:"$branch"
+    }
+    x git diff HEAD | x ssh "$host" "
+        set -eu; PS4='++ '; set -x
+        branch=$(printf %q "$branch")
+        commit=$(printf %q "$commit")
+        cd $(printf %q "$dir")
+        # reverse any previous patch for tethering
+        if [[ -e .git/tethered.patch ]]; then
+            git apply -R <.git/tethered.patch || git stash
+            mv .git/tethered.patch{,~}
+        fi
+        # and keep a copy of the current patch
+        cat >.git/tethered.patch
+        # preserve any outstanding/untethered changes
+        git diff --quiet --exit-code || git stash
+        # make sure we're on the tethered branch and commit
+        [[ \$(git symbolic-ref --short HEAD) = \$branch ]] || git checkout -f \$branch --
+        git reset --hard \$commit
+        # with the same outstanding changes on top of the current commit
+        ! [[ -s .git/tethered.patch ]] || git apply --apply --stat <.git/tethered.patch
+        "
+    )
+}
+
+case $remote in
+    localhost|localhost:*)
+        # not remote, just run given command
+        warning "remote=$remote: Not running remotely"
+        x "$@"
+        ;;
+
+    *:*)
+        # parse remote
+        remote_host=${remote%%:*}
+        remote_repo=${remote#$remote_host:}
+
+        # determine remote workdir based on where in the git repo we're in
+        local_path_within_git=$(git rev-parse --show-prefix)
+        remote_workdir="${remote_repo}/${local_path_within_git#/}"
+
+        # tether remote git repo to local one
+        git-tether-remote "$remote"
+        # and run given command from the same workdir
+        x ssh "$remote_host" \
+            "${ssh_opts[@]}" \
+            "$(printf "%q " bash "${bash_opts[@]}" -c 'cd "$1"; shift; exec "$@"' -- "$remote_workdir" "$@")"
+        ;;
+
+    *)
+        error "remote=$remote: ERROR: remote should be in the form of HOST:PATH"
+esac
