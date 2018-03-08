@@ -8,6 +8,7 @@ set -euo pipefail
 
 error() { echo >&2 "$@"; false; }
 warning() { echo >&2 "$@"; }
+info() { echo >&2 "$@"; }
 
 # make sure we're in a git work tree
 $(git rev-parse --is-inside-work-tree) ||
@@ -84,30 +85,31 @@ git-tether-remote() {
     )
 }
 
-case $remote in
-    localhost|localhost:*)
+# parse remote
+remote_host=${remote%%:*}
+remote_repo=${remote#$remote_host}
+remote_repo=${remote_repo#:}
+case $remote_host in
+    localhost)
         # not remote, just run given command
-        warning "remote=$remote: Not running remotely"
+        info "remote=$remote: Not running remotely"
         x "$@"
         ;;
 
-    *:*)
-        # parse remote
-        remote_host=${remote%%:*}
-        remote_repo=${remote#$remote_host:}
+    *)
+        # use local git work tree's basename when no remote path is given
+        [[ -n $remote_repo ]] || remote_repo=$(basename "$(git rev-parse --show-toplevel)")
 
         # determine remote workdir based on where in the git repo we're in
         local_path_within_git=$(git rev-parse --show-prefix)
         remote_workdir="${remote_repo}/${local_path_within_git#/}"
 
         # tether remote git repo to local one
-        git-tether-remote "$remote"
+        info "remote=$remote: deploying local git work tree to $remote_host:$remote_repo"
+        git-tether-remote "$remote_host:$remote_repo"
         # and run given command from the same workdir
+        info "remote=$remote: running command from $remote_host:$remote_workdir"
         x ssh "$remote_host" \
             "${ssh_opts[@]}" \
             "$(printf "%q " bash "${bash_opts[@]}" -c 'cd "$1"; shift; exec "$@"' -- "$remote_workdir" "$@")"
-        ;;
-
-    *)
-        error "remote=$remote: ERROR: remote should be in the form of HOST:PATH"
 esac
