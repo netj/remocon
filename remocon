@@ -25,7 +25,7 @@ conf=$(
 ssh_opts=(
     # share an ssh connection across invocation
     -o ControlMaster=auto
-    -o ControlPath="${conf%.conf}.sock-%r@%h:%p"
+    -o ControlPath="${TMPDIR:-/tmp}/remocon.sock-%r@%h:%p"
     -o ControlPersist=60
 )
 bash_opts=(
