@@ -28,7 +28,9 @@ ssh_opts=(
     -o ControlPath="${conf%.conf}.sock-%r@%h:%p"
     -o ControlPersist=60
 )
-bash_opts=()
+bash_opts=(
+    bash
+)
 if [[ -t 0 && -t 1 && -t 2 ]]; then
     # when I/O/Err is a fully functional terminal
     ssh_opts+=(-t)   # ask ssh for tty
@@ -111,5 +113,5 @@ case $remote_host in
         info "remote=$remote: running command from $remote_host:$remote_workdir"
         x ssh "$remote_host" \
             "${ssh_opts[@]}" \
-            "$(printf "%q " bash "${bash_opts[@]}" -c 'cd "$1"; shift; exec "$@"' -- "$remote_workdir" "$@")"
+            "$(printf "%q " "${bash_opts[@]}" -c 'cd "$1"; shift; exec "$@"' -- "$remote_workdir" "$@")"
 esac
