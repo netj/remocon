@@ -55,15 +55,17 @@ git-tether-remote() {
     esac
     commit=$(git rev-parse HEAD)
     branch=$(git symbolic-ref --short HEAD)
-    x git push -q -f "$host:$dir" HEAD:"$branch" || {
+    x git remote add remocon/remote "$host:$dir" 2>/dev/null || x git remote set-url remocon/remote "$host:$dir"
+    x git push -q -f remocon/remote HEAD:"$branch" || {
         x ssh "$host" "
             set -eu; PS4='++ '; set -x
             mkdir -p $(printf %q "$dir")
             cd $(printf %q "$dir")
             [[ -e .git ]] || git init
         "
-        x git push -f "$host:$dir" HEAD:"$branch"
+        x git push -f remocon/remote HEAD:"$branch"
     }
+    x git remote remove remocon/remote
     x git diff HEAD | x ssh "$host" "
         set -eu; PS4='++ '; set -x
         branch=$(printf %q "$branch")
