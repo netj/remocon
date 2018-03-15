@@ -66,14 +66,14 @@ git-tether-remote() {
         x git push -f remocon/remote HEAD:"$branch"
     }
     x git remote remove remocon/remote
-    x git diff HEAD | x ssh "$host" "
+    x git diff --full-index --binary HEAD | pv | x ssh "$host" "
         set -eu; PS4='++ '; set -x
         branch=$(printf %q "$branch")
         commit=$(printf %q "$commit")
         cd $(printf %q "$dir")
         # reverse any previous patch for tethering
         if [[ -e .git/tethered.patch ]]; then
-            git apply -R <.git/tethered.patch || git stash
+            git apply --binary -R <.git/tethered.patch || git stash
             mv .git/tethered.patch{,~}
         fi
         # and keep a copy of the current patch
@@ -84,7 +84,7 @@ git-tether-remote() {
         [[ \$(git symbolic-ref --short HEAD) = \$branch ]] || git checkout -f \$branch --
         git reset --hard \$commit
         # with the same outstanding changes on top of the current commit
-        ! [[ -s .git/tethered.patch ]] || git apply --apply --stat <.git/tethered.patch
+        ! [[ -s .git/tethered.patch ]] || git apply --binary --apply --stat <.git/tethered.patch
         "
     )
 }
