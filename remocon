@@ -30,7 +30,7 @@ mkdelegate() {
         echo -n 'exec'; printf ' %q' "$@"
         echo ' "$@"'
     )
-    diff -q <(echo "$script") "$file" 2>/dev/null || echo "$script" >"$file"
+    diff -q <(echo "$script") "$file" &>/dev/null || echo "$script" >"$file"
     chmod +x "$file"
 }
 
@@ -106,8 +106,8 @@ fi
 
 # parse remote
 remote_host=${remote%%:*}
-remote_repo=${remote#$remote_host}
-remote_repo=${remote_repo#:}
+remote_repo_root=${remote#$remote_host}
+remote_repo_root=${remote_repo_root#:}
 
 # no-op when remote is local
 case $remote_host in localhost)
@@ -117,8 +117,8 @@ case $remote_host in localhost)
     exit $?
 esac
 
-# use local git work tree's basename when no remote path is given
-[[ -n $remote_repo ]] || remote_repo=$(basename "$(git rev-parse --show-toplevel)")
+# use local git work tree's basename and keep it under given remote_repo_root dir
+remote_repo=${remote_repo_root:+$remote_repo_root/}$(basename "$(git rev-parse --show-toplevel)")
 
 # determine remote workdir based on where in the git repo we're in
 local_path_within_git=$(git rev-parse --show-prefix)
@@ -129,7 +129,7 @@ sshBoosterOpts=(
     # share an ssh connection across invocation
     -o ControlMaster=auto
     -o ControlPath="/tmp/remocon.sock-%r@%h:%p"
-    -o ControlPersist=60
+    -o ControlPersist=600
 )
 sshBoosterRoot=~/.cache/remocon/ssh
 for cmd in scp ssh; do
