@@ -69,23 +69,27 @@ git-tether-remote() {
         x git push -f remocon/remote HEAD:"$branch"
     }
     x git remote remove remocon/remote
-    x git diff --full-index --binary HEAD | x ssh "$host" "
-        set -eu; PS4='++ '; set -x
+    # bring destination to the current commit
+    x ssh "$host" "set -eu; PS4='++ '; set -x
+        cd $(@q "$dir")
         branch=$(@q "$branch")
         commit=$(@q "$commit")
-        cd $(@q "$dir")
         # reverse any previous patch for tethering
         if [[ -e .git/tethered.patch ]]; then
             git apply --binary -R <.git/tethered.patch || git stash
             mv .git/tethered.patch{,~}
         fi
-        # and keep a copy of the current patch
-        cat >.git/tethered.patch
         # preserve any outstanding/untethered changes
         git diff --quiet --exit-code || git stash
         # make sure we're on the tethered branch and commit
         [[ \$(git symbolic-ref --short HEAD) = \$branch ]] || git checkout -f \$branch --
         git reset --hard \$commit
+    "
+    # send a copy of the current diff and apply patch
+    # TODO preserve index
+    x git diff --full-index --binary HEAD | x ssh "$host" "cat >$(@q "$dir")/.git/tethered.patch"
+    x ssh "$host" "set -eu; PS4='++ '; set -x
+        cd $(@q "$dir")
         # with the same outstanding changes on top of the current commit
         ! [[ -s .git/tethered.patch ]] || git apply --binary --apply --stat <.git/tethered.patch
         "
@@ -134,7 +138,7 @@ remote_workdir="${remote_repo}/${local_path_within_git#/}"
 sshBoosterOpts=(
     # share an ssh connection across invocation
     -o ControlMaster=auto
-    -o ControlPath="/tmp/remocon.sock-%r@%h:%p"
+    -o ControlPath="/tmp/remocon-$USER.sock-%r@%h:%p"
     -o ControlPersist=600
 )
 sshBoosterRoot=~/.cache/remocon/ssh
@@ -146,6 +150,7 @@ PATH="$sshBoosterRoot"/bin:"$PATH"
 # tether remote git repo to local one
 info "remote=$remote: deploying local git work tree to $remote_host:$remote_repo"
 git-tether-remote "$remote_host:$remote_repo"
+} </dev/null >&2
 
 # and run given command from the same workdir
 info "remote=$remote: running command from $remote_host:$remote_workdir"
@@ -154,7 +159,6 @@ if [[ -t 0 && -t 1 && -t 2 ]]; then
     ssh_opts+=(-t)   # ask ssh for tty
     bash_opts+=(-i)  # ask bash for an interactive shell
 fi
-} </dev/null >&2
 x ssh "$remote_host" \
     "${ssh_opts[@]:---}" \
-    "$(@q "${bash_opts[@]}" -c 'cd "$1"; shift; exec "$@"' -- "$remote_workdir" "$@")"
+    "$(@q "${bash_opts[@]}" -c "cd $(@q "$remote_workdir") && exec $(@q "$@")")"
