@@ -162,12 +162,12 @@ done
 PATH="$sshBoosterRoot"/bin:"$PATH"
 
 # tether remote git repo to local one
-info "remote=$remote: deploying local git work tree to $remote_host:$remote_repo"
+info "📡 [$remote_host:$remote_workdir] 🎥 replicating local git work tree"
 git-tether-remote "$remote_host:$remote_repo"
 } </dev/null >&2
 
 # and run given command from the same workdir
-info "remote=$remote: running command from $remote_host:$remote_workdir"
+info "📡 [$remote_host:$remote_workdir] 🎬 running command"
 if [[ -t 0 && -t 1 && -t 2 ]]; then
     # when I/O/Err is a fully functional terminal
     ssh_opts+=(-t)   # ask ssh for tty
