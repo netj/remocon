@@ -56,42 +56,56 @@ git-tether-remote() {
     esac
     commit=$(git rev-parse HEAD)
     branch=$(git symbolic-ref --short HEAD)
-    x git remote add remocon/remote "$host:$dir" 2>/dev/null || x git remote set-url remocon/remote "$host:$dir"
-    x git push -q -f remocon/remote HEAD:"$branch" || {
-        x ssh "$host" "
-            set -eu; PS4='++ '; set -x
+    git remote add remocon/remote "$host:$dir" 2>/dev/null ||
+        git remote set-url remocon/remote "$host:$dir"
+    git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
+        ssh "$host" "
+            set -eu; PS4='++ '; # set -x
             mkdir -p $(@q "$dir")
             cd $(@q "$dir")
             [[ -e .git ]] || git init
             # lift some git config to allow push
             git config receive.denyCurrentBranch ignore
         "
-        x git push -f remocon/remote HEAD:"$branch"
+        git push -f remocon/remote HEAD:"$branch"
     }
-    x git remote remove remocon/remote
+    git remote remove remocon/remote
     # bring destination to the current commit
-    x ssh "$host" "set -eu; PS4='++ '; set -x
+    ssh "$host" "set -eu; PS4='++ '; # set -x
         cd $(@q "$dir")
         branch=$(@q "$branch")
         commit=$(@q "$commit")
         # reverse any previous patch for tethering
         if [[ -e .git/tethered.patch ]]; then
             git apply --binary -R <.git/tethered.patch || git stash
-            mv .git/tethered.patch{,~}
+            mv -f .git/tethered.patch{,~}
         fi
-        # preserve any outstanding/untethered changes
-        git diff --quiet --exit-code || git stash
-        # make sure we're on the tethered branch and commit
-        [[ \$(git symbolic-ref --short HEAD) = \$branch ]] || git checkout -f \$branch --
+        if git rev-parse HEAD &>/dev/null; then
+            # preserve any outstanding/untethered changes
+            git diff --quiet --exit-code HEAD -- || git stash
+            # make sure we're on the tethered branch and commit
+            [[ \$(git symbolic-ref --short HEAD) = \$branch ]] || git checkout -f \$branch --
+        else
+            git checkout -f \$branch --
+        fi
         git reset --hard \$commit
     "
-    # send a copy of the current diff and apply patch
-    # TODO preserve index
-    x git diff --full-index --binary HEAD | x ssh "$host" "cat >$(@q "$dir")/.git/tethered.patch"
-    x ssh "$host" "set -eu; PS4='++ '; set -x
+    # send staged and unstaged changes
+    git diff --full-index --binary HEAD |
+    ssh "$host" "cat >$(@q "$dir")/.git/tethered.patch"
+    ssh "$host" "set -eu; PS4='++ '; # set -x
         cd $(@q "$dir")
         # with the same outstanding changes on top of the current commit
-        ! [[ -s .git/tethered.patch ]] || git apply --binary --apply --stat <.git/tethered.patch
+        ! [[ -s .git/tethered.patch ]] || git apply --binary --apply --stat --cached <.git/tethered.patch
+        git checkout --quiet .
+        git reset --quiet
+        "
+    # replicate staged changes AKA .git/index
+    git diff --full-index --binary --cached |
+    ssh "$host" "cat >$(@q "$dir")/.git/tethered-index.patch"
+    ssh "$host" "set -eu; PS4='++ '; # set -x
+        cd $(@q "$dir")
+        ! [[ -s .git/tethered-index.patch ]] || git apply --binary --apply --cached <.git/tethered-index.patch
         "
     )
 }
@@ -105,7 +119,6 @@ conf=$(
 )
 
 # defaults to not running things remotely
-: ${remote:=localhost}
 ssh_opts=(
 )
 bash_opts=(
@@ -113,6 +126,7 @@ bash_opts=(
 )
 
 ! [[ -e "$conf" ]] || source "$conf"
+: ${remote:=localhost}
 
 # parse remote
 remote_host=${remote%%:*}
