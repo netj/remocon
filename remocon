@@ -6,9 +6,9 @@
 ##
 set -euo pipefail
 
-error() { echo >&2 "$@"; false; }
-warning() { echo >&2 "$@"; }
-info() { echo >&2 "$@"; }
+error()   { echo >&2 "📡 ‼️ " "$@"; false; }
+warning() { echo >&2 "📡 ⚠️ " "$@"; }
+info()    { echo >&2 "📡" "$@"; }
 
 # make sure we're in a git work tree
 $(git rev-parse --is-inside-work-tree) ||
@@ -52,7 +52,7 @@ git-tether-remote() {
     hostpath=$1; shift
     case $hostpath in
         (*:*) host=${hostpath%%:*} dir=${hostpath#*:};;
-        (*) error "$hostpath: host:path required";;
+        (*) error "$hostpath: HOST[:PATH] required";;
     esac
     commit=$(git rev-parse HEAD)
     branch=$(git symbolic-ref --short HEAD)
@@ -69,6 +69,7 @@ git-tether-remote() {
         "
         git push -f remocon/remote HEAD:"$branch"
     }
+    # TODO transfer git config to destination
     git remote remove remocon/remote
     # bring destination to the current commit
     ssh "$host" "set -eu; PS4='++ '; # set -x
@@ -136,7 +137,7 @@ remote_repo_root=${remote_repo_root#:}
 # no-op when remote is local
 case $remote_host in localhost)
     # not remote, just run given command
-    info "remote=$remote: Not running remotely"
+    warning "[$remote_host] Not running remotely"
     x "$@"
     exit $?
 esac
@@ -162,12 +163,12 @@ done
 PATH="$sshBoosterRoot"/bin:"$PATH"
 
 # tether remote git repo to local one
-info "📡 [$remote_host:$remote_workdir] 🎥 replicating local git work tree"
+info "[$remote_host:$remote_repo] 🎥 replicating local git work tree"
 git-tether-remote "$remote_host:$remote_repo"
 } </dev/null >&2
 
 # and run given command from the same workdir
-info "📡 [$remote_host:$remote_workdir] 🎬 running command"
+info "[$remote_host:$remote_workdir] 🎬 running command"
 if [[ -t 0 && -t 1 && -t 2 ]]; then
     # when I/O/Err is a fully functional terminal
     ssh_opts+=(-t)   # ask ssh for tty
@@ -176,3 +177,5 @@ fi
 x ssh "$remote_host" \
     "${ssh_opts[@]:---}" \
     "$(@q "${bash_opts[@]}" -c "cd $(@q "$remote_workdir") && exec $(@q "$@")")"
+
+# TODO provide a way to bring remote changes back
