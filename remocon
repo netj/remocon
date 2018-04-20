@@ -14,34 +14,25 @@ info() { echo >&2 "$@"; }
 $(git rev-parse --is-inside-work-tree) ||
     error "$PWD: Not inside a git work tree"
 
-# find closest .remocon.conf
-conf=$(
-    until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
-    ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
-)
-
-# defaults to not running things remotely
-: ${remote:=localhost}
-ssh_opts=(
-    # share an ssh connection across invocation
-    -o ControlMaster=auto
-    -o ControlPath="/tmp/remocon.sock-%r@%h:%p"
-    -o ControlPersist=60
-)
-bash_opts=(
-    bash
-)
-if [[ -t 0 && -t 1 && -t 2 ]]; then
-    # when I/O/Err is a fully functional terminal
-    ssh_opts+=(-t)   # ask ssh for tty
-    bash_opts+=(-i)  # ask bash for an interactive shell
-fi
-
-! [[ -e "$conf" ]] || source "$conf"
-
+################################################################################
 # a handy way to show what command is running
 # TODO option to quiet things
 x() { echo >&2 "$(echo -n '+'; printf ' %q' "$@")"; "$@"; }
+
+mkdelegate() {
+    : echo 'generates an executable file for delegating with extra options'
+    : echo
+    : echo 'mkdelegate FILE ABS_PATH_TO_COMMAND [OPTION...]'
+    local file=$1; shift
+    mkdir -p "$(dirname "$file")"
+    local script=$(
+        echo '#!/bin/sh'
+        echo -n 'exec'; printf ' %q' "$@"
+        echo ' "$@"'
+    )
+    diff -q <(echo "$script") "$file" 2>/dev/null || echo "$script" >"$file"
+    chmod +x "$file"
+}
 
 # a handy way to patch remote
 # See: https://github.com/netj/bpm/blob/master/plugin/git-helper
@@ -62,11 +53,13 @@ git-tether-remote() {
             mkdir -p $(printf %q "$dir")
             cd $(printf %q "$dir")
             [[ -e .git ]] || git init
+            # lift some git config to allow push
+            git config receive.denyCurrentBranch ignore
         "
         x git push -f remocon/remote HEAD:"$branch"
     }
     x git remote remove remocon/remote
-    x git diff --full-index --binary HEAD | pv | x ssh "$host" "
+    x git diff --full-index --binary HEAD | x ssh "$host" "
         set -eu; PS4='++ '; set -x
         branch=$(printf %q "$branch")
         commit=$(printf %q "$commit")
@@ -88,32 +81,68 @@ git-tether-remote() {
         "
     )
 }
+################################################################################
+
+# find closest .remocon.conf
+conf=$(
+    until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
+    ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
+)
+
+# defaults to not running things remotely
+: ${remote:=localhost}
+ssh_opts=(
+)
+bash_opts=(
+    bash
+)
+if [[ -t 0 && -t 1 && -t 2 ]]; then
+    # when I/O/Err is a fully functional terminal
+    ssh_opts+=(-t)   # ask ssh for tty
+    bash_opts+=(-i)  # ask bash for an interactive shell
+fi
+
+! [[ -e "$conf" ]] || source "$conf"
 
 # parse remote
 remote_host=${remote%%:*}
 remote_repo=${remote#$remote_host}
 remote_repo=${remote_repo#:}
-case $remote_host in
-    localhost)
-        # not remote, just run given command
-        info "remote=$remote: Not running remotely"
-        x "$@"
-        ;;
 
-    *)
-        # use local git work tree's basename when no remote path is given
-        [[ -n $remote_repo ]] || remote_repo=$(basename "$(git rev-parse --show-toplevel)")
-
-        # determine remote workdir based on where in the git repo we're in
-        local_path_within_git=$(git rev-parse --show-prefix)
-        remote_workdir="${remote_repo}/${local_path_within_git#/}"
-
-        # tether remote git repo to local one
-        info "remote=$remote: deploying local git work tree to $remote_host:$remote_repo"
-        git-tether-remote "$remote_host:$remote_repo"
-        # and run given command from the same workdir
-        info "remote=$remote: running command from $remote_host:$remote_workdir"
-        x ssh "$remote_host" \
-            "${ssh_opts[@]}" \
-            "$(printf "%q " "${bash_opts[@]}" -c 'cd "$1"; shift; exec "$@"' -- "$remote_workdir" "$@")"
+# no-op when remote is local
+case $remote_host in localhost)
+    # not remote, just run given command
+    info "remote=$remote: Not running remotely"
+    x "$@"
+    exit $?
 esac
+
+# use local git work tree's basename when no remote path is given
+[[ -n $remote_repo ]] || remote_repo=$(basename "$(git rev-parse --show-toplevel)")
+
+# determine remote workdir based on where in the git repo we're in
+local_path_within_git=$(git rev-parse --show-prefix)
+remote_workdir="${remote_repo}/${local_path_within_git#/}"
+
+# override ssh options/config
+sshBoosterOpts=(
+    # share an ssh connection across invocation
+    -o ControlMaster=auto
+    -o ControlPath="/tmp/remocon.sock-%r@%h:%p"
+    -o ControlPersist=60
+)
+sshBoosterRoot=~/.cache/remocon/ssh
+for cmd in scp ssh; do
+    mkdelegate "$sshBoosterRoot"/bin/"$cmd" "$(type -p "$cmd")" "${sshBoosterOpts[@]}"
+done
+PATH="$sshBoosterRoot"/bin:"$PATH"
+
+# tether remote git repo to local one
+info "remote=$remote: deploying local git work tree to $remote_host:$remote_repo"
+git-tether-remote "$remote_host:$remote_repo"
+
+# and run given command from the same workdir
+info "remote=$remote: running command from $remote_host:$remote_workdir"
+x ssh "$remote_host" \
+    "${ssh_opts[@]:---}" \
+    "$(printf "%q " "${bash_opts[@]}" -c 'cd "$1"; shift; exec "$@"' -- "$remote_workdir" "$@")"
