@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# remocon -- run given command remotely, tethering a workdir on a remote host to local git repo
+# remocon -- run given command remotely, replicating local git work tree on a remote host, and downloading remote changes if needed
 #
 # Author: Jaeho Shin <netj@sparcs.org>
 # Created: 2018-03-08
@@ -10,11 +10,8 @@ error()   { echo >&2 "📡 ‼️ " "$@"; false; }
 warning() { echo >&2 "📡 ⚠️ " "$@"; }
 info()    { echo >&2 "📡" "$@"; }
 
-# make sure we're in a git work tree
-$(git rev-parse --is-inside-work-tree) ||
-    error "$PWD: Not inside a git work tree"
-
 ################################################################################
+
 # a nimble/simple way to use bash -x itself to get single-quoted escapes instead of backslashes given by printf %q
 @q() {
     local e
@@ -77,7 +74,7 @@ git-tether-remote() {
         branch=$(@q "$branch")
         commit=$(@q "$commit")
         # reverse any previous patch for tethering
-        if [[ -e .git/tethered.patch ]]; then
+        if [[ -s .git/tethered.patch ]]; then
             git apply --binary -R <.git/tethered.patch || git stash
             mv -f .git/tethered.patch{,~}
         fi
@@ -110,74 +107,141 @@ git-tether-remote() {
         "
     )
 }
+
 ################################################################################
+# common prep and sub-commands
 
 {
-# find closest .remocon.conf
-conf=$(
-    until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
-    ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
-)
+    # make sure we're in a git work tree
+    $(git rev-parse --is-inside-work-tree) ||
+        error "$PWD: Not inside a git work tree"
 
-# defaults to not running things remotely
-ssh_opts=(
-)
-bash_opts=(
-    bash
-)
+    # find closest .remocon.conf
+    conf=$(
+        until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
+        ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
+    )
 
-! [[ -e "$conf" ]] || source "$conf"
-: ${remote:=localhost}
+    # defaults to not running things remotely
+    ssh_opts=(
+    )
+    bash_opts=(
+        bash
+    )
 
-# parse remote
-remote_host=${remote%%:*}
-remote_repo_root=${remote#$remote_host}
-remote_repo_root=${remote_repo_root#:}
+    ! [[ -e "$conf" ]] || source "$conf"
+    : ${remote:=localhost}
 
-# no-op when remote is local
-case $remote_host in localhost)
-    # not remote, just run given command
-    warning "[$remote_host] Not running remotely"
-    x "$@"
-    exit $?
-esac
+    # parse remote
+    remote_host=${remote%%:*}
+    remote_repo_root=${remote#$remote_host}
+    remote_repo_root=${remote_repo_root#:}
 
-# use local git work tree's basename and keep it under given remote_repo_root dir
-remote_repo=${remote_repo_root:+$remote_repo_root/}$(basename "$(git rev-parse --show-toplevel)")
+    # use local git work tree's basename and keep it under given remote_repo_root dir
+    remote_repo=${remote_repo_root:+$remote_repo_root/}$(basename "$(git rev-parse --show-toplevel)")
 
-# determine remote workdir based on where in the git repo we're in
-local_path_within_git=$(git rev-parse --show-prefix)
-remote_workdir="${remote_repo}/${local_path_within_git#/}"
+    # determine remote workdir based on where in the git repo we're in
+    local_path_within_git=$(git rev-parse --show-prefix)
+    remote_workdir="${remote_repo}/${local_path_within_git#/}"
 
-# override ssh options/config
-sshBoosterOpts=(
-    # share an ssh connection across invocation
-    -o ControlMaster=auto
-    -o ControlPath="/tmp/remocon-$USER.sock-%r@%h:%p"
-    -o ControlPersist=600
-)
-sshBoosterRoot=~/.cache/remocon/ssh
-for cmd in scp ssh; do
-    mkdelegate "$sshBoosterRoot"/bin/"$cmd" "$(type -p "$cmd")" "${sshBoosterOpts[@]}"
-done
-PATH="$sshBoosterRoot"/bin:"$PATH"
-
-# tether remote git repo to local one
-info "[$remote_host:$remote_repo] 🎥 replicating local git work tree"
-git-tether-remote "$remote_host:$remote_repo"
+    # override ssh options/config
+    sshBoosterOpts=(
+        # share an ssh connection across invocation
+        -o ControlMaster=auto
+        -o ControlPath="/tmp/remocon-$USER.sock-%r@%h:%p"
+        -o ControlPersist=600
+        # forward agent
+        -A
+    )
+    sshBoosterRoot=~/.cache/remocon/ssh
+    for cmd in scp ssh; do
+        mkdelegate "$sshBoosterRoot"/bin/"$cmd" "$(type -p "$cmd")" "${sshBoosterOpts[@]}"
+    done
+    PATH="$sshBoosterRoot"/bin:"$PATH"
 } </dev/null >&2
 
-if [[ $# -gt 0 ]]; then
-    # and run given command from the same workdir when given
-    info "[$remote_host:$remote_workdir] 🎬 running command"
-    if [[ -t 0 && -t 1 && -t 2 ]]; then
-        # when I/O/Err is a fully functional terminal
-        ssh_opts+=(-t)   # ask ssh for tty
-        bash_opts+=(-i)  # ask bash for an interactive shell
-    fi
-    x ssh "$remote_host" \
-        "${ssh_opts[@]:---}" \
-        "$(@q "${bash_opts[@]}" -c "cd $(@q "$remote_workdir") && exec $(@q "$@")")"
-fi
+# tether remote git repo to local one
+remocon.put() {
+    [[ $# -eq 0 ]] || error "Cannot put partial changes under given paths: $(@q "$@")"
+    info "[$remote_host:$remote_repo/] 🛰  putting a replica of local git work tree on remote"
+    git-tether-remote "$remote_host:$remote_repo"
+} </dev/null >&2
 
-# TODO provide a way to bring remote changes back
+# put and run given command on remote from the same workdir relative to the git top-level (AKA git prefix)
+remocon.run() {
+    remocon.put
+
+    [[ $# -gt 0 ]] || set -- bash -il
+    info "[$remote_host:$remote_workdir] ⚡️ running command: $(@q "$@")"
+
+    case $remote_host in
+        localhost)
+            # just run given command when remote is local
+            warning "[$remote_host] Not running remotely"
+            x "$@"
+            ;;
+
+        *)
+            if [[ -t 0 && -t 1 && -t 2 ]]; then
+                # when I/O/Err is a fully functional terminal
+                ssh_opts+=(-t)   # ask ssh for tty
+                bash_opts+=(-i)  # ask bash for an interactive shell
+            fi
+            x ssh "$remote_host" \
+                "${ssh_opts[@]:---}" \
+                "$(@q "${bash_opts[@]}" -c "cd $(@q "$remote_workdir") && exec $(@q "$@")")"
+    esac
+}
+
+# get remote changes back to local
+remocon.get() {
+    [[ $# -gt 0 ]] || set -- .
+    info "[$remote_host:$remote_workdir] 💎 getting remote files under $# paths: $(@q "$@")"
+    # TODO use git in case rsync is not available?
+    x rsync \
+        --verbose \
+        --archive \
+        --hard-links \
+        --omit-dir-times \
+        --checksum \
+        --copy-unsafe-links \
+        --exclude=.git \
+        --relative --rsync-path="$(printf 'cd %q &>/dev/null && rsync' "$remote_workdir")" \
+        "$remote_host":"$(@q "$@")" .
+} </dev/null >&2
+
+# programming round-trip mode (put-run-get)
+remocon.prg() {
+    # find which paths to get from given args
+    # (NOTE path list can be terminated by a double-dash `--` to delinate the command to run)
+    local pathsToPull=
+    pathsToPull=()
+    while [[ $# -gt 0 ]]; do
+        local arg=$1; shift
+        case $arg in
+            --) break ;;
+            *) pathsToPull+=("$arg")
+        esac
+    done
+
+    # run command if any were given (after a dash-dash)
+    local exitStatus=0
+    [[ $# -eq 0 ]] || remocon.run "$@" || exitStatus=$?
+
+    # then get files
+    set --; [[ ${#pathsToPull[@]} -eq 0 ]] || set -- "${pathsToPull[@]}"
+    remocon.get "$@" || exitStatus=$?
+
+    return $exitStatus
+}
+
+################################################################################
+# dispatch sub-commands
+
+[[ $# -gt 0 ]] || set -- put  # defaults to replicating local git work tree
+
+cmd=$1; shift
+handler="remocon.$cmd"
+type "$handler" &>/dev/null ||
+    error "$cmd: No such command.  Command must be one of: get, put, run, prg"
+"$handler" "$@"
