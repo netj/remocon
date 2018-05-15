@@ -130,7 +130,9 @@ git-tether-remote() {
     )
 
     ! [[ -e "$conf" ]] || source "$conf"
-    : ${remote:=localhost}
+
+    # require remote= to be set
+    [[ -n ${remote:-} || ${1:-} = set ]] || error "No remote configured. Please run: remocon set"
 
     # parse remote
     remote_host=${remote%%:*}
@@ -159,6 +161,20 @@ git-tether-remote() {
     done
     PATH="$sshBoosterRoot"/bin:"$PATH"
 } </dev/null >&2
+
+# set up ~/.remocon.conf
+remocon.set() {
+    if [[ $# -eq 0 && -t 0 && -t 1 && -t 2 ]]; then
+        info "Enter a remote host and path prefix to use (e.g., example.org or user@example.org or user@example.org:path/prefix/to/repos): "
+        read -r remote || true
+    else
+        [[ $# -gt 0 ]] || error "No remote specified, e.g.: example.org or user@example.org or user@example.org:path/prefix/to/repos"
+        local remote=$1; shift
+    fi
+    [[ -n $remote ]] || error "No remote specified"
+    info "⚙️  setting ~/.remocon.conf to: remote=$remote"
+    printf >>~/.remocon.conf 'remote=%q\n' "$remote"
+}
 
 # tether remote git repo to local one
 remocon.put() {
@@ -251,5 +267,5 @@ fi
 cmd=$1; shift
 handler="remocon.$cmd"
 type "$handler" &>/dev/null ||
-    error "$cmd: No such command.  Command must be one of: get, put, run, prg"
+    error "$cmd: No such command.  Command must be one of: get, put, run, prg, and set"
 "$handler" "$@"
