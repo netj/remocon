@@ -129,7 +129,9 @@ git-tether-remote() {
         bash
     )
 
+    ! declare -p remote &>/dev/null || remote_override=$remote
     ! [[ -e "$conf" ]] || source "$conf"
+    ! declare -p remote_override &>/dev/null || remote=$remote_override
 
     # require remote= to be set
     [[ -n ${remote:-} || ${1:-} = set ]] || error "No remote configured. Please run: remocon set"
