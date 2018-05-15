@@ -174,14 +174,14 @@ remocon.set() {
         local remote=$1; shift
     fi
     [[ -n $remote ]] || error "No remote specified"
-    info "⚙️  setting ~/.remocon.conf to: remote=$remote"
+    info "[$remote] ⚙️ setting ~/.remocon.conf"
     printf >>~/.remocon.conf 'remote=%q\n' "$remote"
 }
 
 # tether remote git repo to local one
 remocon.put() {
     [[ $# -eq 0 ]] || error "Cannot put partial changes under given paths: $(@q "$@")"
-    info "[$remote_host:$remote_repo/] 🛰  putting a replica of local git work tree on remote"
+    info "[$remote_host:$remote_repo/] 🛰 putting a replica of local git work tree on remote"
     git-tether-remote "$remote_host:$remote_repo"
 } </dev/null >&2
 
