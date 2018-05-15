@@ -168,7 +168,7 @@ git-tether-remote() {
 remocon.set() {
     if [[ $# -eq 0 && -t 0 && -t 1 && -t 2 ]]; then
         info "Enter a remote host and path prefix to use (e.g., example.org or user@example.org or user@example.org:path/prefix/to/repos): "
-        read -r remote || true
+        read -p '>>> ' -r remote || true
     else
         [[ $# -gt 0 ]] || error "No remote specified, e.g.: example.org or user@example.org or user@example.org:path/prefix/to/repos"
         local remote=$1; shift
