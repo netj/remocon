@@ -238,7 +238,15 @@ remocon.prg() {
 ################################################################################
 # dispatch sub-commands
 
-[[ $# -gt 0 ]] || set -- put  # defaults to replicating local git work tree
+if ! [[ $# -gt 0 ]]; then
+    if [[ -t 0 && -t 1 && -t 2 ]]; then
+        # in a tty, defaults to replicating and opening an interactive/login shell on remote
+        set -- run
+    else
+        # otherwise, defaults to just replicating local git work tree to remote
+        set -- put
+    fi
+fi
 
 cmd=$1; shift
 handler="remocon.$cmd"
