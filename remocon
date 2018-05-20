@@ -269,5 +269,5 @@ fi
 cmd=$1; shift
 handler="remocon.$cmd"
 type "$handler" &>/dev/null ||
-    error "$cmd: No such command.  Command must be one of: get, put, run, prg, and set"
+    error "$cmd: No such command.  Command must be one of: set, put, run, get, and prg"
 "$handler" "$@"
