@@ -134,7 +134,7 @@ git-tether-remote() {
     ! declare -p remote_override &>/dev/null || remote=$remote_override
 
     # require remote= to be set
-    [[ -n ${remote:-} || ${1:-} = set ]] || error "No remote configured. Please run: remocon set"
+    [[ -n ${remote:=} || ${1:-} = set ]] || error "No remote configured. Please run: remocon set"
 
     # parse remote
     remote_host=${remote%%:*}
