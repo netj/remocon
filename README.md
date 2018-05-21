@@ -168,7 +168,7 @@ $ remocon prg test/report.xml test/log.txt -- make test
 
 
 ## Trivia
-*RemoCon* is a common abbreviation for **remote controller** in Japan/Korea, and possibly in several other countries/languages.
+*RemoCon* is a commonly used word for **remote controller** in Japan/Korea ([リモコン](https://ja.wikipedia.org/wiki/リモコン)/[리모컨](https://ko.wikipedia.org/wiki/리모컨)), and possibly in other countries/languages.
 
 
 ## History
