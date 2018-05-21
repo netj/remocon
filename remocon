@@ -10,6 +10,8 @@ error()   { echo >&2 "📡 ‼️ " "$@"; false; }
 warning() { echo >&2 "📡 ⚠️ " "$@"; }
 info()    { echo >&2 "📡" "$@"; }
 
+in_full_tty() { [[ -t 0 && -t 1 && -t 2 ]]; }
+
 ################################################################################
 
 # a nimble/simple way to use bash -x itself to get single-quoted escapes instead of backslashes given by printf %q
@@ -18,6 +20,8 @@ info()    { echo >&2 "📡" "$@"; }
     e=$(PS4= bash --norc -xc ': "$@"' -- "$@" 2>&1)
     echo "${e:2}"
 }
+# a handy way to compose a shell script that consists of multiple commands in one shot
+cmdseq() { printf '%s; ' "$@"; }
 # a handy way to show what command is running
 x() {
     (
@@ -108,6 +112,28 @@ git-tether-remote() {
     )
 }
 
+# defaults to not running things remotely
+remote_host=localhost
+remote_workdir=
+: ${remote_tmux:=true}
+ssh_opts=(
+)
+bash_opts=(
+    bash
+)
+# shorthand to run given sequence of commands remotely
+run-remotely() {
+    local script=$1; shift
+    if in_full_tty; then
+        # when I/O/Err is a fully functional terminal
+        ssh_opts+=(-t)   # ask ssh for tty
+        bash_opts+=(-i)  # ask bash for an interactive shell
+    fi
+    x ssh "$remote_host" \
+        "${ssh_opts[@]:---}" \
+        "$(@q "${bash_opts[@]}" -c "$(cmdseq "$@")")"
+}
+
 ################################################################################
 # common prep and sub-commands
 
@@ -122,16 +148,11 @@ git-tether-remote() {
         ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
     )
 
-    # defaults to not running things remotely
-    ssh_opts=(
-    )
-    bash_opts=(
-        bash
-    )
-
+    # load from .remocon.conf but let what's in environ override
     ! declare -p remote &>/dev/null || remote_override=$remote
     ! [[ -e "$conf" ]] || source "$conf"
     ! declare -p remote_override &>/dev/null || remote=$remote_override
+    # TODO let all remote_* vars to be overriddable by env vars, e.g., remote_tmux
 
     # require remote= to be set
     [[ -n ${remote:=} || ${1:-} = set ]] || error "No remote configured. Please run: remocon set"
@@ -166,7 +187,7 @@ git-tether-remote() {
 
 # set up ~/.remocon.conf
 remocon.set() {
-    if [[ $# -eq 0 && -t 0 && -t 1 && -t 2 ]]; then
+    if [[ $# -eq 0 ]] && in_full_tty; then
         info "Enter a remote host and path prefix to use (e.g., example.org or user@example.org or user@example.org:path/prefix/to/repos): "
         read -p '>>> ' -r remote || true
     else
@@ -196,18 +217,16 @@ remocon.run() {
         localhost)
             # just run given command when remote is local
             warning "[$remote_host] Not running remotely"
+            x cd "$remote_workdir"
             x "$@"
             ;;
 
         *)
-            if [[ -t 0 && -t 1 && -t 2 ]]; then
-                # when I/O/Err is a fully functional terminal
-                ssh_opts+=(-t)   # ask ssh for tty
-                bash_opts+=(-i)  # ask bash for an interactive shell
-            fi
-            x ssh "$remote_host" \
-                "${ssh_opts[@]:---}" \
-                "$(@q "${bash_opts[@]}" -c "cd $(@q "$remote_workdir") && exec $(@q "$@")")"
+            run-remotely \
+                'set -eu' \
+                "cd $(@q "$remote_workdir")" \
+                "exec $(@q "$@")" \
+                #
     esac
 }
 
@@ -253,13 +272,45 @@ remocon.prg() {
     return $exitStatus
 }
 
+# put and use a new TMUX window to record given command's execution
+remocon.rec() {
+    remocon.put
+
+    if [[ $# -gt 0 ]]; then
+        info "[$remote_host:$remote_workdir] ✨ recording a new TMUX window with: $(@q "$@")"
+        set -- "tmux send-keys C-L $(@q "$(@q "$@")") Enter"
+        ! in_full_tty || warning "[$remote_host:$remote_workdir] attaching to the new TMUX window (TIP: append \` |:\` to command-line to prevent this)"
+    elif in_full_tty; then
+        # in a tty, provide a handy way to create a new window in the same TMUX session
+        info "[$remote_host:$remote_workdir] ✨ recording a new TMUX window for an interactive session"
+    else
+        error 'Missing command. remocon rec can attach to a new TMUX window in a tty, but requires a command otherwise.'
+    fi
+
+    # attach to the new tmux window when in a tty
+    ! in_full_tty || set -- "$@" 'tmux attach'
+
+    run-remotely \
+        'tmux start-server' \
+        'if [[ $(tmux list-sessions | wc -l) -eq 0 ]]' \
+        "then tmux new-session -d -c $(@q "$remote_workdir")" \
+        "else tmux new-window     -c $(@q "$remote_workdir")" \
+        'fi' \
+        "$@" \
+        #
+}
+
 ################################################################################
 # dispatch sub-commands
 
 if ! [[ $# -gt 0 ]]; then
-    if [[ -t 0 && -t 1 && -t 2 ]]; then
-        # in a tty, defaults to replicating and opening an interactive/login shell on remote
-        set -- run
+    if in_full_tty; then
+        # in a tty, defaults to replicating and opening a new TMUX window or an interactive/login shell on remote
+        if $remote_tmux; then
+            set -- rec
+        else
+            set -- run
+        fi
     else
         # otherwise, defaults to just replicating local git work tree to remote
         set -- put
@@ -269,5 +320,5 @@ fi
 cmd=$1; shift
 handler="remocon.$cmd"
 type "$handler" &>/dev/null ||
-    error "$cmd: No such command.  Command must be one of: set, put, run, get, and prg"
+    error "$cmd: No such command.  Command must be one of: set, put, run, get, prg, or rec"
 "$handler" "$@"

@@ -77,10 +77,6 @@ $ remocon run
 ...
 ```
 ```bash
-# Or it's the default behavior when not in a full terminal:
-$ remocon  # from a tty
-```
-```bash
 # You can open a different shell than `bash` if wanted:
 $ remocon run zsh -l
 ```
@@ -144,6 +140,39 @@ $ remocon prg test/report.xml test/log.txt -- make test
 ...
 📡 [example.org] 💎 getting remote files under 2 paths: test/report.xml test/log.txt
 ...
+```
+
+### Is there a way to run the command in a new TMUX window, so I can inspect/debug after it finishes/aborts?
+Of course.
+Use the `rec` (recording) command:
+```bash
+$ remocon rec pytest test/
+📡 [example.org] 🛰 putting a replica of local git work tree on remote
+📡 [example.org] ✨ recording a new TMUX window with: pytest test/
+📡 ⚠️  [example.org] attaching to the new TMUX window (TIP: append ` |:` to command-line to prevent this)
+...
+[detached (from session ...)] or [exited]
+```
+
+When your command takes a long time to run or for whatever reason you may feel it's awkward having to detach every time you run this command to come back to the local shell.
+You probably already have another terminal attached to the remote TMUX session monitoring the activity and just want to launch the command from the local shell in the current terminal.
+Here's a neat little trick for such setup: **append the ` |:` to the command-line and it won't attach but just create a new TMUX window for it**:
+```bash
+$ remocon rec pytest test/ |:
+📡 [example.org] 🛰 putting a replica of local git work tree on remote
+📡 [example.org] ✨ recording a new TMUX window with: pytest test/
+```
+
+Finally, here's a handy way to attach to the TMUX session that can be used from the other terminal:
+```bash
+$ remocon rec
+📡 [example.org] 🛰 putting a replica of local git work tree on remote
+📡 [example.org] ✨ recording a new TMUX window for an interactive session
+...
+```
+In fact, it's `remocon`'s default behavior when in a full terminal:
+```bash
+$ remocon  # from a tty
 ```
 
 
