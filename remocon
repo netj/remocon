@@ -294,6 +294,9 @@ remocon.rec() {
     ! in_full_tty ||
         set -- "$@" 'tmux attach'
 
+    # when interacting with tmux, doing it from a login shell may be slightly more desirable
+    bash_opts+=(-l)
+
     run-remotely \
         'tmux start-server' \
         'if [[ $(tmux list-sessions | wc -l) -eq 0 ]]' \
