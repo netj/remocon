@@ -278,7 +278,7 @@ remocon.rec() {
 
     if [[ $# -gt 0 ]]; then
         info "[$remote_host:$remote_workdir] ✨ recording a new TMUX window with: $(@q "$@")"
-        set -- "tmux send-keys C-L $(@q "$(@q "$@")") Enter"
+        set -- "$@" "tmux send-keys C-L $(@q "$(@q "$@")") Enter"
         ! in_full_tty || warning "[$remote_host:$remote_workdir] attaching to the new TMUX window (TIP: append \` |:\` to command-line to prevent this)"
     elif in_full_tty; then
         # in a tty, provide a handy way to create a new window in the same TMUX session
@@ -287,14 +287,18 @@ remocon.rec() {
         error 'Missing command. remocon rec can attach to a new TMUX window in a tty, but requires a command otherwise.'
     fi
 
+    # cd is better typed than relying on tmux's new-window/session -c option
+    set -- "tmux send-keys $(@q "cd; cd $(@q "$remote_workdir")") Enter" "$@"
+
     # attach to the new tmux window when in a tty
-    ! in_full_tty || set -- "$@" 'tmux attach'
+    ! in_full_tty ||
+        set -- "$@" 'tmux attach'
 
     run-remotely \
         'tmux start-server' \
         'if [[ $(tmux list-sessions | wc -l) -eq 0 ]]' \
-        "then tmux new-session -d -c $(@q "$remote_workdir")" \
-        "else tmux new-window     -c $(@q "$remote_workdir")" \
+        "then tmux new-session -d" \
+        "else tmux new-window    " \
         'fi' \
         "$@" \
         #
