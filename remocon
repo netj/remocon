@@ -217,13 +217,16 @@ remocon.run() {
         localhost)
             # just run given command when remote is local
             warning "[$remote_host] Not running remotely"
+            x mkdir -p "$remote_workdir"
             x cd "$remote_workdir"
             x "$@"
             ;;
 
         *)
             run-remotely \
+                'cd' \
                 'set -eu' \
+                "mkdir -p $(@q "$remote_workdir")" \
                 "cd $(@q "$remote_workdir")" \
                 "exec $(@q "$@")" \
                 #
@@ -243,7 +246,7 @@ remocon.get() {
         --checksum \
         --copy-unsafe-links \
         --exclude=.git \
-        --relative --rsync-path="$(printf 'cd %q &>/dev/null && rsync' "$remote_workdir")" \
+        --relative --rsync-path="$(printf 'cd; mkdir -p %q && cd %q &>/dev/null && rsync' "$remote_workdir" "$remote_workdir")" \
         "$remote_host":"$(@q "$@")" .
 } </dev/null >&2
 
@@ -288,7 +291,7 @@ remocon.rec() {
     fi
 
     # cd is better typed than relying on tmux's new-window/session -c option
-    set -- "tmux send-keys $(@q "cd; cd $(@q "$remote_workdir")") Enter" "$@"
+    set -- "tmux send-keys $(@q "cd; mkdir -p $(@q "$remote_workdir") && cd $(@q "$remote_workdir")") Enter" "$@"
 
     # attach to the new tmux window when in a tty
     ! in_full_tty ||
