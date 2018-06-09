@@ -281,7 +281,7 @@ remocon.rec() {
 
     if [[ $# -gt 0 ]]; then
         info "[$remote_host:$remote_workdir] ✨ recording a new TMUX window with: $(@q "$@")"
-        set -- "$@" "tmux send-keys C-L $(@q "$(@q "$@")") Enter"
+        set -- "tmux send-keys C-L $(@q "$(@q "$@")") Enter"
         ! in_full_tty || warning "[$remote_host:$remote_workdir] attaching to the new TMUX window (TIP: append \` |:\` to command-line to prevent this)"
     elif in_full_tty; then
         # in a tty, provide a handy way to create a new window in the same TMUX session
