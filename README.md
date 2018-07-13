@@ -8,13 +8,20 @@ Use your favorite editor/IDE with a local git work tree, even when you need to r
 - It opens a remote shell with an identical copy of the work tree on the preconfigured host.
 - Enjoy playing with the same commit and all the tracked staged/unstaged changes under the same relative working directory, but on a remote host.
 
+![remocon live in a Terminal session running pytest remotely](https://github.com/netj/remocon/raw/gh-pages/remocon.terminal.remote-pytest.gif)
+
+
 ### In MacVim (or vim)
 - `:set makeprg=remocon`
 - Now, <kbd>⌘B</kbd> (or `:make`) mirrors all your local edits remotely within a second.
 
 ### In IntelliJ/PyCharm
 - Add to *External Tools* a *Program* `remocon` with *Working directory* set to `$ProjectFileDir$`.
+    ![adding remocon as an External Tool to IntelliJ or PyCharm or any JetBrains IDE](https://github.com/netj/remocon/raw/gh-pages/remocon.idea.external-tool.gif)
+
 - Assign a shortcut to it, say <kbd>^⌘S</kbd>, from *Keymap* in *Preferences*.
+    ![assigning a keyboard shortcut for remocon in IntelliJ or PyCharm or any JetBrains IDE](https://github.com/netj/remocon/raw/gh-pages/remocon.idea.keyboard-shortcut.gif)
+
 - Now, making all your changes appear on the remote host requires the same effort as saving any file locally.
 
 
