@@ -44,7 +44,9 @@ Download the [`remocon`](https://github.com/netj/remocon/raw/master/remocon) scr
 ```bash
 # Use the `set` command interactively:
 $ remocon set
-📡 Enter a remote host and path prefix to use (e.g., example.org or user@example.org or user@example.org:path/prefix/to/repos): 
+📡 Enter a remote host and path prefix to use, e.g.:
+    user@example.org:tmp/repos       to put a clone of local git work tree 'foo' under 'tmp/repos/foo', or 
+    example.org or user@example.org  to put all remote clones on the home dir.
 >>> user@somewhere.org:some/path
 📡 [user@somewhere.org:some/path] ⚙️ setting ~/.remocon.conf
 ```
