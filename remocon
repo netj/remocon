@@ -187,11 +187,16 @@ run-remotely() {
 
 # set up ~/.remocon.conf
 remocon.set() {
+    local examples=$(echo \
+        $'\n'"    user@example.org:tmp/repos       to put a clone of local git work tree 'foo' under 'tmp/repos/foo', or" \
+        $'\n'"    example.org or user@example.org  to put all remote clones on the home dir." \
+        #
+    )
     if [[ $# -eq 0 ]] && in_full_tty; then
-        info "Enter a remote host and path prefix to use (e.g., example.org or user@example.org or user@example.org:path/prefix/to/repos): "
+        info "Enter a remote host and path prefix to use, e.g.:$examples"
         read -p '>>> ' -r remote || true
     else
-        [[ $# -gt 0 ]] || error "No remote specified, e.g.: example.org or user@example.org or user@example.org:path/prefix/to/repos"
+        [[ $# -gt 0 ]] || error "No USER@HOST[:PATH] specified as first argument, e.g.:$examples"
         local remote=$1; shift
     fi
     [[ -n $remote ]] || error "No remote specified"
