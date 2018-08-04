@@ -57,11 +57,14 @@ git-tether-remote() {
     esac
     commit=$(git rev-parse HEAD)
     branch=$(git symbolic-ref --short HEAD)
+    bash_remotely() {
+        local script=$1; shift
+        ssh "$host" "$(@q bash -euc "PS4='++ '; $script" "$@")"
+    }
     git remote add remocon/remote "$host:$dir" 2>/dev/null ||
         git remote set-url remocon/remote "$host:$dir"
     git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
-        ssh "$host" "
-            set -eu; PS4='++ '; # set -x
+        bash_remotely "# set -x
             mkdir -p $(@q "$dir")
             cd $(@q "$dir")
             [[ -e .git ]] || git init
@@ -73,7 +76,7 @@ git-tether-remote() {
     # TODO transfer git config to destination
     git remote remove remocon/remote
     # bring destination to the current commit
-    ssh "$host" "set -eu; PS4='++ '; # set -x
+    bash_remotely "# set -x
         cd $(@q "$dir")
         branch=$(@q "$branch")
         commit=$(@q "$commit")
@@ -94,8 +97,8 @@ git-tether-remote() {
     "
     # send staged and unstaged changes
     git diff --full-index --binary HEAD |
-    ssh "$host" "cat >$(@q "$dir")/.git/tethered.patch"
-    ssh "$host" "set -eu; PS4='++ '; # set -x
+    bash_remotely "cat >$(@q "$dir")/.git/tethered.patch"
+    bash_remotely "# set -x
         cd $(@q "$dir")
         # with the same outstanding changes on top of the current commit
         ! [[ -s .git/tethered.patch ]] || git apply --binary --apply --stat --cached <.git/tethered.patch
@@ -104,8 +107,8 @@ git-tether-remote() {
         "
     # replicate staged changes AKA .git/index
     git diff --full-index --binary --cached |
-    ssh "$host" "cat >$(@q "$dir")/.git/tethered-index.patch"
-    ssh "$host" "set -eu; PS4='++ '; # set -x
+    bash_remotely "cat >$(@q "$dir")/.git/tethered-index.patch"
+    bash_remotely "# set -x
         cd $(@q "$dir")
         ! [[ -s .git/tethered-index.patch ]] || git apply --binary --apply --cached <.git/tethered-index.patch
         "
