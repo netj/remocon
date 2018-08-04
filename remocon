@@ -102,14 +102,17 @@ git-tether-remote() {
         cd $(@q "$dir")
         # with the same outstanding changes on top of the current commit
         ! [[ -s .git/tethered.patch ]] || git apply --binary --apply --stat --cached <.git/tethered.patch
+        # (relying on git-checkout from current git index takes care of a lot, such as permissions, symlinks)
         git checkout --quiet .
-        git reset --quiet
+        # (however, git-checkout does not handle deleted files nicely, so ensuring any files in HEAD that fell into --others are removed)
+        comm -12 <(git ls-tree -r --name-only HEAD | sort) <(git ls-files --others --exclude-standard | sort) | tr '\\n' '\\0' | xargs -0 rm -f
         "
     # replicate staged changes AKA .git/index
     git diff --full-index --binary --cached |
     bash_remotely "cat >$(@q "$dir")/.git/tethered-index.patch"
     bash_remotely "# set -x
         cd $(@q "$dir")
+        git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
         ! [[ -s .git/tethered-index.patch ]] || git apply --binary --apply --cached <.git/tethered-index.patch
         "
     )
