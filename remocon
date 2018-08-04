@@ -76,6 +76,10 @@ git-tether-remote() {
     # TODO transfer git config to destination
     git remote remove remocon/remote
     # bring destination to the current commit
+    command-that-actually-rm-files-deleted-from-git-index-that-come-from() {
+        local commit=$1; shift
+        echo "comm -12 <(git ls-tree -r --name-only $(@q "$commit") | sort) <(git ls-files --others --exclude-standard | sort) | tr '\\n' '\\0' | xargs -0 rm -f"
+    }
     bash_remotely "# set -x
         cd $(@q "$dir")
         branch=$(@q "$branch")
@@ -91,9 +95,11 @@ git-tether-remote() {
             # make sure we're on the tethered branch and commit
             [[ \$(git symbolic-ref --short HEAD) = \$branch ]] || git checkout -f \$branch --
         else
+            # no branch was checked out before
             git checkout -f \$branch --
         fi
         git reset --hard \$commit
+        $(command-that-actually-rm-files-deleted-from-git-index-that-come-from "HEAD@{1}")  # (necessary as git-reset does not always handle delete files cleanly)
     "
     # send staged and unstaged changes
     git diff --full-index --binary HEAD |
@@ -105,7 +111,7 @@ git-tether-remote() {
         # (relying on git-checkout from current git index takes care of a lot, such as permissions, symlinks)
         git checkout --quiet .
         # (however, git-checkout does not handle deleted files nicely, so ensuring any files in HEAD that fell into --others are removed)
-        comm -12 <(git ls-tree -r --name-only HEAD | sort) <(git ls-files --others --exclude-standard | sort) | tr '\\n' '\\0' | xargs -0 rm -f
+        $(command-that-actually-rm-files-deleted-from-git-index-that-come-from "HEAD")
         "
     # replicate staged changes AKA .git/index
     git diff --full-index --binary --cached |
