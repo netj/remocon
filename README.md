@@ -37,6 +37,14 @@ brew install netj/tap/remocon
 ### On Linux/Windows/...
 Download the [`remocon`](https://github.com/netj/remocon/raw/master/remocon) script and place it as an executable file on a directory on `$PATH`.
 
+### Bash Completion
+[remocon-completion.bash](remocon-completion.bash) includes programmatic completion support for bash (and perhaps other shells).
+bash-completion 2 or later required.
+Homebrew formula takes care of installation on macOS.
+On other OS, install it manually to the right place, such as:
+```bash
+install -m a=r remocon-completion.bash /usr/local/etc/bash_completion.d/
+```
 
 ## Usage
 

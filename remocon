@@ -197,6 +197,11 @@ run-remotely() {
     PATH="$sshBoosterRoot"/bin:"$PATH"
 } </dev/null >&2
 
+# prints configured remote, inferred remote_repo root, remote_workdir
+remocon.remote() { echo "$remote"; }
+remocon.remote_repo() { echo "$remote_host:$remote_repo"; }
+remocon.remote_workdir() { echo "$remote_host:$remote_workdir"; }
+
 # set up ~/.remocon.conf
 remocon.set() {
     local examples=$(echo \
