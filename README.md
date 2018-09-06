@@ -11,27 +11,15 @@ Use your favorite editor/IDE with a local git work tree, even when you need to r
 ![remocon live in a Terminal session running pytest remotely](https://github.com/netj/remocon/raw/gh-pages/remocon.terminal.remote-pytest.gif)
 
 
-### In MacVim (or vim)
-- `:set makeprg=remocon`
-- Now, <kbd>⌘B</kbd> (or `:make`) mirrors all your local edits remotely within a second.
-
-### In IntelliJ/PyCharm
-- Add to *External Tools* a *Program* `remocon` with *Working directory* set to `$ProjectFileDir$`.
-    ![adding remocon as an External Tool to IntelliJ or PyCharm or any JetBrains IDE](https://github.com/netj/remocon/raw/gh-pages/remocon.idea.external-tool.gif)
-
-- Assign a shortcut to it, say <kbd>^⌘S</kbd>, from *Keymap* in *Preferences*.
-    ![assigning a keyboard shortcut for remocon in IntelliJ or PyCharm or any JetBrains IDE](https://github.com/netj/remocon/raw/gh-pages/remocon.idea.keyboard-shortcut.gif)
-
-- Now, making all your changes appear on the remote host requires the same effort as saving any file locally.
-
-
 ## Installation
 
 ### On macOS
 You probably already have [Homebrew](https://brew.sh).
 Then, just run:
 ```bash
+ 
 brew install netj/tap/remocon
+ 
 ```
 
 ### On Linux/Windows/...
@@ -45,6 +33,20 @@ On other OS, install it manually to the right place, such as:
 ```bash
 install -m a=r remocon-completion.bash /usr/local/etc/bash_completion.d/
 ```
+
+### In MacVim (or vim)
+- `:set makeprg=remocon`
+- Now, <kbd>⌘B</kbd> (or `:make`) mirrors all your local edits remotely within a second.
+
+### In IntelliJ/PyCharm
+- Add to *External Tools* a *Program* `remocon` with *Working directory* set to `$ProjectFileDir$`.
+    ![adding remocon as an External Tool to IntelliJ or PyCharm or any JetBrains IDE](https://github.com/netj/remocon/raw/gh-pages/remocon.idea.external-tool.gif)
+
+- Assign a shortcut to it, say <kbd>^⌘S</kbd>, from *Keymap* in *Preferences*.
+    ![assigning a keyboard shortcut for remocon in IntelliJ or PyCharm or any JetBrains IDE](https://github.com/netj/remocon/raw/gh-pages/remocon.idea.keyboard-shortcut.gif)
+
+- Now, making all your changes appear on the remote host requires the same effort as saving any file locally.
+
 
 ## Usage
 
