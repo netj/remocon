@@ -197,6 +197,9 @@ run-remotely() {
     PATH="$sshBoosterRoot"/bin:"$PATH"
 } </dev/null >&2
 
+# break the ssh connection when interrupted, e.g., ControlPath can get stale
+trap 'x ssh "$remote_host" -O stop' INT
+
 # prints configured remote, inferred remote_repo root, remote_workdir
 remocon.remote() { echo "$remote"; }
 remocon.remote_repo() { echo "$remote_host:$remote_repo"; }
