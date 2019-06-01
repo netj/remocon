@@ -163,11 +163,13 @@ run-remotely() {
 ################################################################################
 # common prep and sub-commands
 
+# TODO turn below into a function and call it from bottom
 {
     # make sure we're in a git work tree
     $(git rev-parse --is-inside-work-tree) ||
         error "$PWD: Not inside a git work tree"
 
+    # TODO migrate remocon.conf to git config
     # find closest .remocon.conf
     conf=$(
         until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
@@ -241,6 +243,7 @@ remocon.set() {
 # tether remote git repo to local one
 remocon.put() {
     [[ $# -eq 0 ]] || error "Cannot put partial changes under given paths: $(@q "$@")"
+    # TODO accept multiple remotes as args
     info "[$remote_host:$remote_repo/] 🛰 putting a replica of local git work tree on remote"
     git-tether-remote "$remote_host:$remote_repo"
 } </dev/null >&2
