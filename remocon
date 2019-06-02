@@ -74,15 +74,15 @@ rbc() {
         (*) error "$hostworkdir: HOST[:PATH] required";;
     esac
     # prepare command sequence from given function, variable names
+    set -- x @q rbc "$@"  # adding default
     set -- \
         "set -eu" \
         "mkdir -p $(@q "$dir")" \
         "cd $(@q "$workdir")" \
         "PS4=$(@q "+ $hostworkdir$ ")" \
-        "set -x" \
-        "$([[ $# -eq 0 ]] || declare -f -- "$fn" "$@"  # TODO support when fn is a command; not a function
-        )" \
         "$([[ $# -eq 0 ]] || declare -p -- "$@" # TODO exclude declare -F to suppress errors
+        )" \
+        "$([[ $# -eq 0 ]] || declare -f -- "$@" "$fn"  # TODO support when fn is a command; not a function
         )" \
         "$fn"
     # determine how to run the function
@@ -125,11 +125,11 @@ git-tether-remote() {
     x git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
         _remocon_git_init() {
             # set -x
-            [[ -e .git ]] || git init
+            [[ -e .git ]] || x git init
             # lift some git config to allow push
-            git config receive.denyCurrentBranch ignore
+            x git config receive.denyCurrentBranch ignore
         }
-        rbc "$hostpath" _remocon_git_init x @q
+        rbc "$hostpath" _remocon_git_init
         x git push -f remocon/remote HEAD:"$branch"
     }
     # TODO transfer git config to destination
@@ -145,19 +145,19 @@ git-tether-remote() {
         # set -x
         # reverse any previous patch for tethering
         if [[ -s "$patch" ]]; then
-            git apply --binary -R <"$patch" || git stash
+            x git apply --binary -R "$patch" || x git stash
             mv -f "$patch"{,~}
         fi
         if git rev-parse HEAD &>/dev/null; then
             # preserve any outstanding/untethered changes
-            git diff --quiet --exit-code HEAD -- || git stash
+            git diff --quiet --exit-code HEAD -- || x git stash
             # make sure we're on the tethered branch and commit
-            [[ $(git symbolic-ref --short HEAD) = $branch ]] || git checkout -f $branch --
+            [[ $(git symbolic-ref --short HEAD) = $branch ]] || x git checkout -f $branch --
         else
             # no branch was checked out before
-            git checkout -f $branch --
+            x git checkout -f $branch --
         fi
-        git reset --hard $commit
+        x git reset --hard $commit
         _actually_rm_files_deleted_from_git_index_that_come_from HEAD@{1}  # (necessary as git-reset does not always handle delete files cleanly)
     }
     rbc "$hostpath" _remocon_reset_to_HEAD branch commit patch _actually_rm_files_deleted_from_git_index_that_come_from
@@ -166,9 +166,9 @@ git-tether-remote() {
     x git diff --full-index --binary HEAD | rbc "$hostpath" _remocon_write_patch patch
     _remocon_apply_patch() {
         # with the same outstanding changes on top of the current commit
-        ! [[ -s "$patch" ]] || git apply --binary --apply --stat --cached <"$patch"
+        ! [[ -s "$patch" ]] || x git apply --binary --apply --stat --cached "$patch"
         # (relying on git-checkout from current git index takes care of a lot, such as permissions, symlinks)
-        git checkout --quiet .
+        x git checkout --quiet .
         # (however, git-checkout does not handle deleted files nicely, so ensuring any files in HEAD that fell into --others are removed)
         _actually_rm_files_deleted_from_git_index_that_come_from HEAD
     }
@@ -177,8 +177,8 @@ git-tether-remote() {
     x git diff --full-index --binary --cached | rbc "$hostpath" _remocon_write_patch patch
     local patch=.git/tethered-index.patch
     _remocon_apply_patch_index() {
-        git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
-        ! [[ -s "$patch" ]] || git apply --binary --apply --cached <"$patch"
+        x git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
+        ! [[ -s "$patch" ]] || x git apply --binary --apply --cached "$patch"
     }
     rbc "$hostpath" _remocon_apply_patch_index patch
     )
