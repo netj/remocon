@@ -120,13 +120,9 @@ git-tether-remote() {
     esac
     commit=$(git rev-parse HEAD)
     branch=$(git symbolic-ref --short HEAD)
-    bash_remotely() {
-        local script=$1; shift
-        ssh "$host" "$(@q bash -euc "PS4='++ '; $script" "$@")"
-    }
-    git remote add remocon/remote "$host:$dir" 2>/dev/null ||
-        git remote set-url remocon/remote "$host:$dir"
-    git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
+    x git remote add remocon/remote "$host:$dir" 2>/dev/null ||
+        x git remote set-url remocon/remote "$host:$dir"
+    x git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
         _remocon_git_init() {
             # set -x
             [[ -e .git ]] || git init
@@ -139,51 +135,52 @@ git-tether-remote() {
     # TODO transfer git config to destination
     git remote remove remocon/remote
     # bring destination to the current commit
-    command-that-actually-rm-files-deleted-from-git-index-that-come-from() {
+    _actually_rm_files_deleted_from_git_index_that_come_from() {
         local commit=$1; shift
-        echo "comm -12 <(git ls-tree -r --name-only $(@q "$commit") | sort) <(git ls-files --others --exclude-standard | sort) | tr '\\n' '\\0' | xargs -0 rm -f"
+        comm -12 <(git ls-tree -r --name-only "$commit" | sort) <(git ls-files --others --exclude-standard | sort) |
+        tr '\n' '\0' | xargs -0 rm -f
     }
-    bash_remotely "# set -x
-        cd $(@q "$dir")
-        branch=$(@q "$branch")
-        commit=$(@q "$commit")
+    local patch=.git/tethered.patch
+    _remocon_reset_to_HEAD() {
+        # set -x
         # reverse any previous patch for tethering
-        if [[ -s .git/tethered.patch ]]; then
-            git apply --binary -R <.git/tethered.patch || git stash
-            mv -f .git/tethered.patch{,~}
+        if [[ -s "$patch" ]]; then
+            git apply --binary -R <"$patch" || git stash
+            mv -f "$patch"{,~}
         fi
         if git rev-parse HEAD &>/dev/null; then
             # preserve any outstanding/untethered changes
             git diff --quiet --exit-code HEAD -- || git stash
             # make sure we're on the tethered branch and commit
-            [[ \$(git symbolic-ref --short HEAD) = \$branch ]] || git checkout -f \$branch --
+            [[ $(git symbolic-ref --short HEAD) = $branch ]] || git checkout -f $branch --
         else
             # no branch was checked out before
-            git checkout -f \$branch --
+            git checkout -f $branch --
         fi
-        git reset --hard \$commit
-        $(command-that-actually-rm-files-deleted-from-git-index-that-come-from "HEAD@{1}")  # (necessary as git-reset does not always handle delete files cleanly)
-    "
+        git reset --hard $commit
+        _actually_rm_files_deleted_from_git_index_that_come_from HEAD@{1}  # (necessary as git-reset does not always handle delete files cleanly)
+    }
+    rbc "$hostpath" _remocon_reset_to_HEAD branch commit patch _actually_rm_files_deleted_from_git_index_that_come_from
     # send staged and unstaged changes
-    git diff --full-index --binary HEAD |
-    bash_remotely "cat >$(@q "$dir")/.git/tethered.patch"
-    bash_remotely "# set -x
-        cd $(@q "$dir")
+    _remocon_write_patch() { tee "$patch" >/dev/null; }
+    x git diff --full-index --binary HEAD | rbc "$hostpath" _remocon_write_patch patch
+    _remocon_apply_patch() {
         # with the same outstanding changes on top of the current commit
-        ! [[ -s .git/tethered.patch ]] || git apply --binary --apply --stat --cached <.git/tethered.patch
+        ! [[ -s "$patch" ]] || git apply --binary --apply --stat --cached <"$patch"
         # (relying on git-checkout from current git index takes care of a lot, such as permissions, symlinks)
         git checkout --quiet .
         # (however, git-checkout does not handle deleted files nicely, so ensuring any files in HEAD that fell into --others are removed)
-        $(command-that-actually-rm-files-deleted-from-git-index-that-come-from "HEAD")
-        "
+        _actually_rm_files_deleted_from_git_index_that_come_from HEAD
+    }
+    rbc "$hostpath" _remocon_apply_patch patch _actually_rm_files_deleted_from_git_index_that_come_from
     # replicate staged changes AKA .git/index
-    git diff --full-index --binary --cached |
-    bash_remotely "cat >$(@q "$dir")/.git/tethered-index.patch"
-    bash_remotely "# set -x
-        cd $(@q "$dir")
+    x git diff --full-index --binary --cached | rbc "$hostpath" _remocon_write_patch patch
+    local patch=.git/tethered-index.patch
+    _remocon_apply_patch_index() {
         git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
-        ! [[ -s .git/tethered-index.patch ]] || git apply --binary --apply --cached <.git/tethered-index.patch
-        "
+        ! [[ -s "$patch" ]] || git apply --binary --apply --cached <"$patch"
+    }
+    rbc "$hostpath" _remocon_apply_patch_index patch
     )
 }
 
