@@ -65,27 +65,47 @@ mkdelegate() {
     chmod +x "$file"
 }
 
-# run on given remote host:workdir given bash function, sending variable and function declarations
-rbashfn() {
+# remote bash call -- run on given remote host:workdir given bash function, sending variable and function declarations
+rbc() {
     local hostworkdir=$1; shift
     local fn=$1; shift
     case $hostworkdir in
         (*:*) host=${hostworkdir%%:*} workdir=${hostworkdir#*:};;
         (*) error "$hostworkdir: HOST[:PATH] required";;
     esac
-    remote_host="$host" \
-    run-remotely \
-        ": FIXME remove this bogus first arg" \
+    # prepare command sequence from given function, variable names
+    set -- \
         "set -eu" \
         "mkdir -p $(@q "$dir")" \
         "cd $(@q "$workdir")" \
         "PS4=$(@q "+ $hostworkdir$ ")" \
         "set -x" \
-        "$(declare -p -f -- "$fn")" \
-        "$([[ $# -eq 0 ]] || declare -f -- "$@")" \
+        "$([[ $# -eq 0 ]] || declare -f -- "$fn" "$@"  # TODO support when fn is a command; not a function
+        )" \
         "$([[ $# -eq 0 ]] || declare -p -- "$@" # TODO exclude declare -F to suppress errors
         )" \
         "$fn"
+    # determine how to run the function
+    local ssh_opts bash_opts
+    ssh_opts=(
+    )
+    bash_opts=(
+        bash
+    )
+    if in_full_tty; then
+        # when stdin/out/err is a fully functional terminal
+        ssh_opts+=(-t)   # ask ssh for tty
+        bash_opts+=(-i)  # ask bash for an interactive shell
+    fi
+    set -- "${bash_opts[@]}" -c "$(cmdseq "$@")"
+    case $host in
+        localhost)  # special case: run it directly if on same host
+            "$@"
+            ;;
+        *)  # send it over to remote via ssh by default
+            ssh "$host" "${ssh_opts[@]:---}" "$(@q "$@")"
+            ;;
+    esac
 }
 
 # a handy way to patch remote
@@ -113,7 +133,7 @@ git-tether-remote() {
             # lift some git config to allow push
             git config receive.denyCurrentBranch ignore
         }
-        rbashfn "$hostpath" _remocon_git_init x @q
+        rbc "$hostpath" _remocon_git_init x @q
         x git push -f remocon/remote HEAD:"$branch"
     }
     # TODO transfer git config to destination
@@ -177,6 +197,7 @@ bash_opts=(
     bash
 )
 # shorthand to run given sequence of commands remotely
+# TODO deprecate and replace with rbc instead
 run-remotely() {
     local script=$1; shift
     if in_full_tty; then
