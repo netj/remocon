@@ -35,7 +35,13 @@ in_full_tty() { [[ -t 0 && -t 1 && -t 2 ]]; }
     echo "${e:2}"
 }
 # a handy way to compose a shell script that consists of multiple commands in one shot
-cmdseq() { printf '%s; ' "$@"; }
+cmdseq() {
+    local cmd
+    for cmd; do
+        [[ -n $cmd ]] || continue
+        printf '%s; ' "$cmd"
+    done
+}
 # a handy way to show what command is running
 x() {
     (
@@ -59,6 +65,29 @@ mkdelegate() {
     chmod +x "$file"
 }
 
+# run on given remote host:workdir given bash function, sending variable and function declarations
+rbashfn() {
+    local hostworkdir=$1; shift
+    local fn=$1; shift
+    case $hostworkdir in
+        (*:*) host=${hostworkdir%%:*} workdir=${hostworkdir#*:};;
+        (*) error "$hostworkdir: HOST[:PATH] required";;
+    esac
+    remote_host="$host" \
+    run-remotely \
+        ": FIXME remove this bogus first arg" \
+        "set -eu" \
+        "mkdir -p $(@q "$dir")" \
+        "cd $(@q "$workdir")" \
+        "PS4=$(@q "+ $hostworkdir$ ")" \
+        "set -x" \
+        "$(declare -p -f -- "$fn")" \
+        "$([[ $# -eq 0 ]] || declare -f -- "$@")" \
+        "$([[ $# -eq 0 ]] || declare -p -- "$@" # TODO exclude declare -F to suppress errors
+        )" \
+        "$fn"
+}
+
 # a handy way to patch remote
 # See: https://github.com/netj/bpm/blob/master/plugin/git-helper
 git-tether-remote() {
@@ -78,14 +107,14 @@ git-tether-remote() {
     git remote add remocon/remote "$host:$dir" 2>/dev/null ||
         git remote set-url remocon/remote "$host:$dir"
     git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
-        bash_remotely "# set -x
-            mkdir -p $(@q "$dir")
-            cd $(@q "$dir")
+        _remocon_git_init() {
+            # set -x
             [[ -e .git ]] || git init
             # lift some git config to allow push
             git config receive.denyCurrentBranch ignore
-        "
-        git push -f remocon/remote HEAD:"$branch"
+        }
+        rbashfn "$hostpath" _remocon_git_init x @q
+        x git push -f remocon/remote HEAD:"$branch"
     }
     # TODO transfer git config to destination
     git remote remove remocon/remote
