@@ -74,15 +74,20 @@ rbc() {
         (*) error "$hostworkdir: HOST[:PATH] required";;
     esac
     # prepare command sequence from given function, variable names
-    set -- x @q rbc "$@"  # adding default
+    set -- x @q rbc "$@" "$fn"  # adding some core names to include
     set -- \
         "set -eu" \
         "mkdir -p $(@q "$dir")" \
         "cd $(@q "$workdir")" \
         "PS4=$(@q "+ $hostworkdir$ ")" \
-        "$([[ $# -eq 0 ]] || declare -p -- "$@" # TODO exclude declare -F to suppress errors
-        )" \
-        "$([[ $# -eq 0 ]] || declare -f -- "$@" "$fn"  # TODO support when fn is a command; not a function
+        "$(
+            while [[ $# -gt 0 ]]; do
+                if declare -F "$1" &>/dev/null; then declare -f -- "$1"
+                else declare -p -- "$1"
+                # TODO support when fn is neither a variable nor a function (probably a command)
+                fi
+                shift
+            done
         )" \
         "$fn"
     # determine how to run the function
@@ -142,7 +147,6 @@ git-tether-remote() {
     }
     local patch=.git/tethered.patch
     _remocon_reset_to_HEAD() {
-        # set -x
         # reverse any previous patch for tethering
         if [[ -s "$patch" ]]; then
             x git apply --binary -R "$patch" || x git stash
