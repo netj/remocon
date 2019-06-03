@@ -81,7 +81,7 @@ rbc() {
     set -- x @q rbc "$@" "$fn"  # adding some core names to include
     set -- \
         "set -eu" \
-        "mkdir -p $(@q "$dir")" \
+        "mkdir -p $(@q "$workdir")" \
         "cd $(@q "$workdir")" \
         "PS4=$(@q "+ $hostworkdir$ ")" \
         "$(
