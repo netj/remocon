@@ -70,6 +70,11 @@ mkdelegate() {
 }
 
 # remote bash call -- run on given remote host:workdir given bash function, sending variable and function declarations
+ssh_opts=(
+)
+bash_opts=(
+    bash
+)
 rbc() {
     local hostworkdir=$1; shift
     local fn=$1; shift
@@ -95,12 +100,6 @@ rbc() {
         )" \
         "$fn"
     # determine how to run the function
-    local ssh_opts bash_opts
-    ssh_opts=(
-    )
-    bash_opts=(
-        bash
-    )
     if in_full_tty; then
         # when stdin/out/err is a fully functional terminal
         ssh_opts+=(-t)   # ask ssh for tty
@@ -196,24 +195,6 @@ git-tether-remote() {
 remote_host=localhost
 remote_workdir=
 : ${remote_tmux:=true}
-ssh_opts=(
-)
-bash_opts=(
-    bash
-)
-# shorthand to run given sequence of commands remotely
-# TODO deprecate and replace with rbc instead
-run-remotely() {
-    local script=$1; shift
-    if in_full_tty; then
-        # when I/O/Err is a fully functional terminal
-        ssh_opts+=(-t)   # ask ssh for tty
-        bash_opts+=(-i)  # ask bash for an interactive shell
-    fi
-    x ssh "$remote_host" \
-        "${ssh_opts[@]:---}" \
-        "$(@q "${bash_opts[@]}" -c "$(cmdseq "$@")")"
-}
 
 ################################################################################
 # common prep and sub-commands
@@ -310,24 +291,8 @@ remocon.run() {
     [[ $# -gt 0 ]] || set -- bash -il
     info "[$remote_host:$remote_workdir] ⚡️ running command: $(@q "$@")"
 
-    case $remote_host in
-        localhost)
-            # just run given command when remote is local
-            warning "[$remote_host] Not running remotely"
-            x mkdir -p "$remote_workdir"
-            x cd "$remote_workdir"
-            x "$@"
-            ;;
-
-        *)
-            run-remotely \
-                'cd' \
-                'set -eu' \
-                "mkdir -p $(@q "$remote_workdir")" \
-                "cd $(@q "$remote_workdir")" \
-                "exec $(@q "$@")" \
-                #
-    esac
+    eval "_remocon_run_cmd() { x $(@q "$@"); }"
+    rbc "$remote_host:$remote_workdir" _remocon_run_cmd
 }
 
 # get remote changes back to local
@@ -397,14 +362,15 @@ remocon.rec() {
     # when interacting with tmux, doing it from a login shell may be slightly more desirable
     bash_opts+=(-l)
 
-    run-remotely \
-        'tmux start-server' \
-        'if [[ $(tmux list-sessions | wc -l) -eq 0 ]]' \
-        "then tmux new-session -d" \
-        "else tmux new-window    " \
-        'fi' \
-        "$@" \
-        #
+    _remocon_start_tmux_window() {
+        tmux start-server
+        if [[ $(tmux list-sessions | wc -l) -eq 0 ]]
+        then tmux new-session -d
+        else tmux new-window
+        fi
+    }
+    eval "_remocon_rec_cmd() { _remocon_start_tmux_window; x $(@q "$@"); }"
+    rbc "$remote_host:$remote_workdir" _remocon_rec_cmd _remocon_start_tmux_window
 }
 
 ################################################################################
