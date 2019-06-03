@@ -231,6 +231,9 @@ remote_workdir=
 
     # determine remote workdir based on where in the git repo we're in
     local_path_within_git=$(git rev-parse --show-prefix)
+    local_path_to_git_top=$(git rev-parse --show-toplevel)
+    local_path_to_git_top_abbrev=${local_path_to_git_top#$HOME/}
+    PS4="+ localhost:$local_path_to_git_top_abbrev\$ "  # to let `x` show more informative lines to stderr
     remote_workdir="${remote_repo}/${local_path_within_git#/}"
 
     # override ssh options/config
