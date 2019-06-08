@@ -121,9 +121,9 @@ rbc() {
     esac
 }
 
-# a handy way to patch remote
-# See: https://github.com/netj/bpm/blob/master/plugin/git-helper
-git-tether-remote() {
+# how to duplicate one git worktree to another
+# Origin: https://github.com/netj/bpm/blob/master/plugin/git-helper
+remocon.dup() {
     (
     set -euo pipefail
     hostpath=$1; shift
@@ -290,8 +290,7 @@ remocon.put() {
     [[ $# -eq 0 ]] || error "Cannot put partial changes under given paths: $(@q "$@")"
     # TODO accept multiple remotes as args
     info "🛰 [$remote_host:$remote_repo/] putting a replica of local git work tree on remote"
-    git-tether-remote "$remote_host:$remote_repo"
-    # TODO rename git-tether-remote to remocon.dup
+    remocon.dup "$remote_host:$remote_repo"
     # TODO remocon.dup $local_hostrepo $remote_hostrepo
 } </dev/null >&2
 
