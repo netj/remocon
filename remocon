@@ -291,8 +291,8 @@ remocon.put() {
     # TODO accept multiple remotes as args
     info "🛰 [$remote_host:$remote_repo/] putting a replica of local git work tree on remote"
     git-tether-remote "$remote_host:$remote_repo"
-    # TODO src_hostpath and dst_hostpath
     # TODO rename git-tether-remote to remocon.dup
+    # TODO remocon.dup $local_hostrepo $remote_hostrepo
 } </dev/null >&2
 
 # put and run given command on remote from the same workdir relative to the git top-level (AKA git prefix)
@@ -310,6 +310,7 @@ remocon.run() {
 remocon.get() {
     [[ $# -gt 0 ]] || set -- .
     info "💎 [$remote_host:$remote_workdir] getting remote files under $# paths: $(@q "$@")"
+    # TODO remocon.dup $remote_hostrepo $local_hostrepo
     # TODO use git in case rsync is not available?
     x rsync \
         --verbose \
