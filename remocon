@@ -93,9 +93,12 @@ rbc() {
         "PS4=$(@q "+ $hostworkdir$ ")" \
         "$(
             while [[ $# -gt 0 ]]; do
-                if declare -F "$1" &>/dev/null; then declare -f -- "$1"
-                else declare -p -- "$1"
-                # TODO support when fn is neither a variable nor a function (probably a command)
+                if declare -F "$1" &>/dev/null; then
+                    declare -f -- "$1"
+                else
+                    case $1 in (*=*) declare -- "$1"; v=${1%%=*} ;; (*) v=$1 ;; esac
+                    declare -p -- "$v"
+                    # TODO support when fn is neither a variable nor a function (probably a command)
                 fi
                 shift
             done
@@ -185,13 +188,12 @@ git-tether-remote() {
     }
     rbc "$hostpath" _remocon_apply_patch patch _actually_rm_files_deleted_from_git_index_that_come_from
     # replicate staged changes AKA .git/index
-    local patch=.git/tethered-index.patch
-    x git diff --full-index --binary --cached | rbc "$hostpath" _remocon_write_patch patch
+    x git diff --full-index --binary --cached | rbc "$hostpath" _remocon_write_patch patch=.git/tethered-index.patch
     _remocon_apply_patch_index() {
         x git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
         ! [[ -s "$patch" ]] || x git apply --binary --apply --cached "$patch"
     }
-    rbc "$hostpath" _remocon_apply_patch_index patch
+    rbc "$hostpath" _remocon_apply_patch_index patch=.git/tethered-index.patch
     )
 }
 
