@@ -375,7 +375,7 @@ remocon.rec() {
     bash_opts+=(-l)
 
     _remocon_start_tmux_window() {
-        if [[ $(tmux list-sessions | wc -l) -eq 0 ]]
+        if [[ $(tmux list-sessions 2>/dev/null | wc -l) -eq 0 ]]
         then x tmux new-session -d
         else x tmux new-window
         fi
