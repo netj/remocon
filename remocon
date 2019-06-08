@@ -40,10 +40,12 @@ in_full_tty() { [[ -t 0 && -t 1 && -t 2 ]]; }
 }
 # a handy way to compose a shell script that consists of multiple commands in one shot
 cmdseq() {
-    local cmd
+    : ${cmdsep:="; "}
+    local cmd sep=
     for cmd; do
         [[ -n $cmd ]] || continue
-        printf '%s; ' "$cmd"
+        printf "$sep%s" "$cmd"
+        sep=$cmdsep
     done
 }
 # a handy way to show what command is running
@@ -360,7 +362,7 @@ remocon.rec() {
     fi
 
     # cd is better typed than relying on tmux's new-window/session -c option
-    set -- "tmux send-keys $(@q "$(cmdseq \
+    set -- "tmux send-keys $(@q "$(cmdsep=" && " cmdseq \
             "cd" \
             "mkdir -p $(@q "$remote_workdir")" \
             "cd $(@q "$remote_workdir")" \
@@ -380,7 +382,7 @@ remocon.rec() {
         else x tmux new-window
         fi
     }
-    eval "_remocon_rec_cmd() { $(cmdseq _remocon_start_tmux_window "${@/#/x }") }"
+    eval "_remocon_rec_cmd() { $(cmdseq _remocon_start_tmux_window "${@/#/x }"); }"
     rbc "$remote_host:$remote_workdir" _remocon_rec_cmd _remocon_start_tmux_window
 }
 
