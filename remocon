@@ -48,7 +48,7 @@ cmdseq() {
 }
 # a handy way to show what command is running
 x() {
-    (
+    ! ${verbose:=true} || (
         case ${1:-} in (builtin|command) shift;; esac
         echo "$PS4$(@q "$@")"
     ) >&2
