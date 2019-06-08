@@ -122,6 +122,7 @@ git-tether-remote() {
     (
     set -euo pipefail
     hostpath=$1; shift
+    # TODO src_hostpath and dst_hostpath
     case $hostpath in
         (*:*) host=${hostpath%%:*} dir=${hostpath#*:};;
         (*) error "$hostpath: HOST[:PATH] required";;
@@ -130,6 +131,7 @@ git-tether-remote() {
     branch=$(git symbolic-ref --short HEAD)
     x git remote add remocon/remote "$host:$dir" 2>/dev/null ||
         x git remote set-url remocon/remote "$host:$dir"
+    # TODO pull if dst is localhost
     x git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
         _remocon_git_init() {
             # set -x
@@ -283,8 +285,11 @@ remocon.set() {
 remocon.put() {
     [[ $# -eq 0 ]] || error "Cannot put partial changes under given paths: $(@q "$@")"
     # TODO accept multiple remotes as args
+    # TODO move emojis to the beginning
     info "[$remote_host:$remote_repo/] 🛰 putting a replica of local git work tree on remote"
     git-tether-remote "$remote_host:$remote_repo"
+    # TODO src_hostpath and dst_hostpath
+    # TODO rename git-tether-remote to remocon.dup
 } </dev/null >&2
 
 # put and run given command on remote from the same workdir relative to the git top-level (AKA git prefix)
