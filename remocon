@@ -181,8 +181,8 @@ git-tether-remote() {
     }
     rbc "$hostpath" _remocon_apply_patch patch _actually_rm_files_deleted_from_git_index_that_come_from
     # replicate staged changes AKA .git/index
-    x git diff --full-index --binary --cached | rbc "$hostpath" _remocon_write_patch patch
     local patch=.git/tethered-index.patch
+    x git diff --full-index --binary --cached | rbc "$hostpath" _remocon_write_patch patch
     _remocon_apply_patch_index() {
         x git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
         ! [[ -s "$patch" ]] || x git apply --binary --apply --cached "$patch"
