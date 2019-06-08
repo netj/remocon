@@ -377,10 +377,8 @@ remocon.rec() {
     bash_opts+=(-l)
 
     _remocon_start_tmux_window() {
-        if [[ $(tmux list-sessions 2>/dev/null | wc -l) -eq 0 ]]
-        then x tmux new-session -d
-        else x tmux new-window
-        fi
+        [[ $(tmux list-sessions 2>/dev/null | wc -l) -gt 0 ]] || x tmux new-session -d
+        x tmux new-window
     }
     eval "_remocon_rec_cmd() { $(cmdseq _remocon_start_tmux_window "${@/#/x }"); }"
     rbc "$remote_host:$remote_workdir" _remocon_rec_cmd _remocon_start_tmux_window
