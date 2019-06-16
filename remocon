@@ -289,7 +289,7 @@ remocon.set() {
 remocon.put() {
     [[ $# -eq 0 ]] || error "Cannot put partial changes under given paths: $(@q "$@")"
     # TODO accept multiple remotes as args
-    info "🛰 [$remote_host:$remote_repo/] putting a replica of local git work tree on remote"
+    info "⏫ [$remote_host:$remote_repo/] putting a replica of local git work tree on remote"
     remocon.dup "$remote_host:$remote_repo"
     # TODO remocon.dup $local_hostrepo $remote_hostrepo
 } </dev/null >&2
@@ -299,7 +299,7 @@ remocon.run() {
     remocon.put
 
     [[ $# -gt 0 ]] || set -- bash -il
-    info "⚡️ [$remote_host:$remote_workdir] running command: $(@q "$@")"
+    info "▶️ [$remote_host:$remote_workdir] running command: $(@q "$@")"
 
     eval "_remocon_run_cmd() { x $(@q "$@"); }"
     rbc "$remote_host:$remote_workdir" _remocon_run_cmd
@@ -308,7 +308,7 @@ remocon.run() {
 # get remote changes back to local
 remocon.get() {
     [[ $# -gt 0 ]] || set -- .
-    info "💎 [$remote_host:$remote_workdir] getting remote files under $# paths: $(@q "$@")"
+    info "⏬ [$remote_host:$remote_workdir] getting remote files under $# paths: $(@q "$@")"
     # TODO remocon.dup $remote_hostrepo $local_hostrepo
     # TODO use git in case rsync is not available?
     x rsync \
@@ -353,12 +353,12 @@ remocon.rec() {
     remocon.put
 
     if [[ $# -gt 0 ]]; then
-        info "✨ [$remote_host:$remote_workdir] recording a new TMUX window with: $(@q "$@")"
+        info "⏺ [$remote_host:$remote_workdir] recording a new TMUX window with: $(@q "$@")"
         set -- "tmux send-keys C-L $(@q "$(@q "$@")") Enter"
         ! in_full_tty || warning "[$remote_host:$remote_workdir] attaching to the new TMUX window (TIP: append \` |:\` to command-line to prevent this)"
     elif in_full_tty; then
         # in a tty, provide a handy way to create a new window in the same TMUX session
-        info "✨ [$remote_host:$remote_workdir] recording a new TMUX window for an interactive session"
+        info "⏺ [$remote_host:$remote_workdir] recording a new TMUX window for an interactive session"
     else
         error 'Missing command. remocon rec can attach to a new TMUX window in a tty, but requires a command otherwise.'
     fi
