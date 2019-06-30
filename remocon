@@ -65,6 +65,7 @@ $verbose || {
     x() { "$@"; }
     alias x=''
 }
+x_prefix_for_remote() { echo "+ $1$ "; }
 
 mkdelegate() {
     : echo 'generates an executable file for delegating with extra options'
@@ -94,7 +95,7 @@ rbc() {
         "set -eu" \
         "mkdir -p $(@q "$workdir")" \
         "cd $(@q "$workdir")" \
-        "PS4=$(@q "+ $hostworkdir$ ")" \
+        "PS4=$(@q "$(x_prefix_for_remote "$hostworkdir")")" \
         "$(declarationsFor "$@")" \
         "$fn"
     # determine how to run the function
@@ -252,7 +253,7 @@ remocon._parse_config() {
     # determine remote workdir based on where in the git repo we're in
     local local_path_to_git_top local_path_within_git
     local_path_to_git_top=$(git rev-parse --show-toplevel)
-    PS4="+ localhost:${local_path_to_git_top#$HOME/}\$ "  # to let `x` show more informative lines to stderr
+    PS4=$(x_prefix_for_remote "localhost:${local_path_to_git_top#$HOME/}")  # to let `x` show more informative lines to stderr
     local_path_within_git=$(git rev-parse --show-prefix)
     remote_workdir="${remote_repo}/${local_path_within_git#/}"
     } >&2
