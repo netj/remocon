@@ -20,6 +20,9 @@
 ##
 set -euo pipefail
 
+: ${verbose:=false}
+: ${remote_tmux:=true}
+
 error()   { echo >&2 "📡 ‼️ " "$@"; false; }
 warning() { echo >&2 "📡 ⚠️ " "$@"; }
 info()    { echo >&2 "📡" "$@"; }
@@ -50,11 +53,15 @@ cmdseq() {
 }
 # a handy way to show what command is running
 x() {
-    ! ${verbose:=true} || (
+    (
         case ${1:-} in (builtin|command) shift;; esac
         echo "$PS4$(@q "$@")"
     ) >&2
     "$@"
+}
+$verbose || {
+    x() { "$@"; }
+    alias x=''
 }
 
 mkdelegate() {
@@ -200,7 +207,6 @@ remocon.dup() {
 # defaults to not running things remotely
 remote_host=localhost
 remote_workdir=
-: ${remote_tmux:=true}
 
 ################################################################################
 # common prep and sub-commands
@@ -312,13 +318,14 @@ remocon.get() {
     # TODO remocon.dup $remote_hostrepo $local_hostrepo
     # TODO use git in case rsync is not available?
     x rsync \
-        --verbose \
         --archive \
         --hard-links \
         --omit-dir-times \
         --checksum \
         --copy-unsafe-links \
         --exclude=.git \
+        --partial \
+        $(! $verbose || echo '--progress --verbose') \
         --relative --rsync-path="$(printf 'cd; mkdir -p %q && cd %q &>/dev/null && rsync' "$remote_workdir" "$remote_workdir")" \
         "$remote_host":"$(@q "$@")" .
 } </dev/null >&2
