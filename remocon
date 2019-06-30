@@ -258,7 +258,7 @@ remocon._parse_config() {
     } >&2
 
     local v
-    for v in remote{,_{host,repo,workdir}}
+    for v in remote{,_{host,repo,workdir}} PS4
     do @q "$v=${!v}"
     done
 } </dev/null
