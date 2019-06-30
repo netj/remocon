@@ -396,6 +396,7 @@ remocon.prg() {
             *) pathsToPull+=("$arg")
         esac
     done
+    # TODO require a non-empty pathsToPull or default to .
 
     # run command if any were given (after a dash-dash)
     local exitStatus=0
