@@ -121,12 +121,14 @@ rbc() {
         error warning info \
         x @q rbc "$@"
     set -- "$@" "$fn"  # adding some core names to include
+    local decls
+    decls=$(declarationsFor "$@")
     set -- \
         "set -eu" \
         "mkdir -p $(@q "$workdir")" \
         "cd $(@q "$workdir")" \
         "PS4=$(@q "$(x_prefix_for_remote "$hostworkdir")")" \
-        "$(declarationsFor "$@")" \
+        "$decls" \
         "$fn"
     # determine how to run the function
     if in_full_tty; then
