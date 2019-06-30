@@ -22,6 +22,8 @@ set -euo pipefail
 
 : ${verbose:=false}
 : ${remote_tmux:=true}
+: ${remote:=localhost} # defaults to not running things remotely
+
 
 error()   { echo >&2 "📡 ‼️ " "$@"; false; }
 warning() { echo >&2 "📡 ⚠️ " "$@"; }
@@ -84,6 +86,18 @@ ssh_opts=(
 bash_opts=(
     bash
 )
+declarationsFor() {
+    while [[ $# -gt 0 ]]; do
+        if declare -F "$1" &>/dev/null; then
+            declare -f -- "$1"
+        else
+            case $1 in (*=*) declare -- "$1"; v=${1%%=*} ;; (*) v=$1 ;; esac
+            declare -p -- "$v"
+            # TODO support when fn is neither a variable nor a function (probably a command)
+        fi
+        shift
+    done
+}
 rbc() {
     local hostworkdir=$1; shift
     local fn=$1; shift
@@ -98,18 +112,7 @@ rbc() {
         "mkdir -p $(@q "$workdir")" \
         "cd $(@q "$workdir")" \
         "PS4=$(@q "+ $hostworkdir$ ")" \
-        "$(
-            while [[ $# -gt 0 ]]; do
-                if declare -F "$1" &>/dev/null; then
-                    declare -f -- "$1"
-                else
-                    case $1 in (*=*) declare -- "$1"; v=${1%%=*} ;; (*) v=$1 ;; esac
-                    declare -p -- "$v"
-                    # TODO support when fn is neither a variable nor a function (probably a command)
-                fi
-                shift
-            done
-        )" \
+        "$(declarationsFor "$@")" \
         "$fn"
     # determine how to run the function
     if in_full_tty; then
@@ -204,28 +207,32 @@ remocon.dup() {
     )
 }
 
-# defaults to not running things remotely
-remote_host=localhost
-remote_workdir=
-
 ################################################################################
-# common prep and sub-commands
+# common prep
 
-# TODO turn below into a function and call it from bottom
-{
+remocon._init() {
+    remocon._parse_config
+    remocon._setup_ssh_booster
+    # break the ssh connection when interrupted, e.g., ControlPath can get stale
+    trap 'x ssh "$remote_host" -O stop' INT
+} </dev/null >/dev/null
+
+remocon._parse_config() {
+    {
     # make sure we're in a git work tree
     $(git rev-parse --is-inside-work-tree) ||
         error "$PWD: Not inside a git work tree"
 
     # TODO migrate remocon.conf to git config
     # find closest .remocon.conf
+    local conf
     conf=$(
         until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
         ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
     )
 
     # load from .remocon.conf but let what's in environ override
-    ! declare -p remote &>/dev/null || remote_override=$remote
+    ! declare -p remote &>/dev/null || local remote_override=$remote
     ! [[ -e "$conf" ]] || source "$conf"
     ! declare -p remote_override &>/dev/null || remote=$remote_override
     # TODO let all remote_* vars to be overriddable by env vars, e.g., remote_tmux
@@ -234,7 +241,8 @@ remote_workdir=
     [[ -n ${remote:=} || ${1:-} = set ]] || error "No remote configured. Please run: remocon set"
 
     # parse remote
-    remote_host=${remote%%:*}
+    local remote_repo_root
+    remote_host="${remote%%:*}"
     remote_repo_root=${remote#$remote_host}
     remote_repo_root=${remote_repo_root#:}
 
@@ -242,13 +250,23 @@ remote_workdir=
     remote_repo=${remote_repo_root:+$remote_repo_root/}$(basename "$(git rev-parse --show-toplevel)")
 
     # determine remote workdir based on where in the git repo we're in
-    local_path_within_git=$(git rev-parse --show-prefix)
+    local local_path_to_git_top local_path_within_git
     local_path_to_git_top=$(git rev-parse --show-toplevel)
-    local_path_to_git_top_abbrev=${local_path_to_git_top#$HOME/}
-    PS4="+ localhost:$local_path_to_git_top_abbrev\$ "  # to let `x` show more informative lines to stderr
+    PS4="+ localhost:${local_path_to_git_top#$HOME/}\$ "  # to let `x` show more informative lines to stderr
+    local_path_within_git=$(git rev-parse --show-prefix)
     remote_workdir="${remote_repo}/${local_path_within_git#/}"
+    } >&2
 
+    local v
+    for v in remote{,_{host,repo,workdir}}
+    do @q "$v=${!v}"
+    done
+} </dev/null
+
+remocon._setup_ssh_booster() {
+    {
     # override ssh options/config
+    local sshBoosterOpts
     sshBoosterOpts=(
         # share an ssh connection across invocation
         -o ControlMaster=auto
@@ -257,15 +275,19 @@ remote_workdir=
         # forward agent
         -A
     )
-    sshBoosterRoot=~/.cache/remocon/ssh
+    local sshBoosterRoot=~/.cache/remocon/ssh
+    local cmd
     for cmd in scp ssh; do
         mkdelegate "$sshBoosterRoot"/bin/"$cmd" "$(type -p "$cmd")" "${sshBoosterOpts[@]}"
     done
-    PATH="$sshBoosterRoot"/bin:"$PATH"
-} </dev/null >&2
+    } >&2
 
-# break the ssh connection when interrupted, e.g., ControlPath can get stale
-trap 'x ssh "$remote_host" -O stop' INT
+    echo 'export PATH='"$(@q "$sshBoosterRoot"/bin)"':"$PATH"'
+} </dev/null
+
+
+################################################################################
+# sub-commands
 
 # prints configured remote, inferred remote_repo root, remote_workdir
 remocon.remote() { echo "$remote"; }
@@ -393,25 +415,30 @@ remocon.rec() {
     rbc "$remote_host:$remote_workdir" _remocon_rec_cmd _remocon_start_tmux_window
 }
 
+
 ################################################################################
-# dispatch sub-commands
-
-if ! [[ $# -gt 0 ]]; then
-    if in_full_tty; then
-        # in a tty, defaults to replicating and opening a new TMUX window or an interactive/login shell on remote
-        if $remote_tmux; then
-            set -- rec
+# dispatching sub-commands
+remocon() {
+    if ! [[ $# -gt 0 ]]; then
+        if in_full_tty; then
+            # in a tty, defaults to replicating and opening a new TMUX window or an interactive/login shell on remote
+            if $remote_tmux; then
+                set -- rec
+            else
+                set -- run
+            fi
         else
-            set -- run
+            # otherwise, defaults to just replicating local git work tree to remote
+            set -- put
         fi
-    else
-        # otherwise, defaults to just replicating local git work tree to remote
-        set -- put
     fi
-fi
 
-cmd=$1; shift
-handler="remocon.$cmd"
-type "$handler" &>/dev/null ||
-    error "$cmd: No such command.  Command must be one of: set, put, run, get, prg, or rec"
-"$handler" "$@"
+    cmd=$1; shift
+    handler="remocon.$cmd"
+    type "$handler" &>/dev/null ||
+        error "$cmd: No such command.  Command must be one of: set, put, run, get, prg, or rec"
+    case $cmd in _*) ;; *) remocon._init ;; esac  # common prep for normal commands
+    "$handler" "$@"
+}
+
+remocon "$@"
