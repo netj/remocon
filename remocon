@@ -24,14 +24,40 @@ set -euo pipefail
 : ${remote_tmux:=true}
 : ${remote:=localhost} # defaults to not running things remotely
 
+################################################################################
 
-error()   { echo >&2 "📡 ‼️ " "$@"; false; }
-warning() { echo >&2 "📡 ⚠️ " "$@"; }
-info()    { echo >&2 "📡" "$@"; }
+coloring() {
+    local c=$1; shift
+    if ${force_color:-false} || [[ -t 1 ]]; then
+        local           red=$'\E[0;31m'
+        local         green=$'\E[0;32m'
+        local          blue=$'\E[0;34m'
+        local          cyan=$'\E[0;36m'
+        local       magenta=$'\E[0;35m'
+        local        yellow=$'\E[0;33m'
+        local         black=$'\E[0;30m'
+        local          gray=$'\E[0;37m'
+        local         white=$'\E[0;38m'
+        local     light_red=$'\E[1;31m'
+        local   light_green=$'\E[1;32m'
+        local    light_blue=$'\E[1;34m'
+        local    light_cyan=$'\E[1;36m'
+        local light_magenta=$'\E[1;35m'
+        local  light_yellow=$'\E[1;33m'
+        local   light_white=$'\E[1;37m'
+        local      no_color=$'\E[0m'
+        local out
+        out=$("$@")
+        echo "${!c}$out$no_color"
+    else
+        "$@"
+    fi
+}
+error()   { coloring light_red    echo >&2 "📡 ‼️ " "$@"; false; }
+warning() { coloring light_yellow echo >&2 "📡 ⚠️ " "$@"; }
+info()    { coloring       cyan   echo >&2 "📡"    "$@"; }
 
 in_full_tty() { [[ -t 0 && -t 1 && -t 2 ]]; }
-
-################################################################################
 
 # a nimble/simple way to use bash -x itself to get single-quoted escapes instead of backslashes given by printf %q
 @q() {
@@ -57,7 +83,7 @@ cmdseq() {
 x() {
     (
         case ${1:-} in (builtin|command) shift;; esac
-        echo "$PS4$(@q "$@")"
+        coloring blue echo "$PS4$(@q "$@")"
     ) >&2
     "$@"
 }
@@ -90,7 +116,11 @@ rbc() {
         (*) error "$hostworkdir: HOST[:PATH] required";;
     esac
     # prepare command sequence from given function, variable names
-    set -- x @q rbc "$@" "$fn"  # adding some core names to include
+    ! [[ -t 1 ]] || : ${force_color:=true}
+    set -- "force_color=${force_color:-}" coloring \
+        error warning info \
+        x @q rbc "$@"
+    set -- "$@" "$fn"  # adding some core names to include
     set -- \
         "set -eu" \
         "mkdir -p $(@q "$workdir")" \
