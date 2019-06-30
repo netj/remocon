@@ -81,23 +81,6 @@ mkdelegate() {
 }
 
 # remote bash call -- run on given remote host:workdir given bash function, sending variable and function declarations
-ssh_opts=(
-)
-bash_opts=(
-    bash
-)
-declarationsFor() {
-    while [[ $# -gt 0 ]]; do
-        if declare -F "$1" &>/dev/null; then
-            declare -f -- "$1"
-        else
-            case $1 in (*=*) declare -- "$1"; v=${1%%=*} ;; (*) v=$1 ;; esac
-            declare -p -- "$v"
-            # TODO support when fn is neither a variable nor a function (probably a command)
-        fi
-        shift
-    done
-}
 rbc() {
     local hostworkdir=$1; shift
     local fn=$1; shift
@@ -129,6 +112,23 @@ rbc() {
             ssh "$host" "${ssh_opts[@]:---}" "$(@q "$@")"
             ;;
     esac
+}
+ssh_opts=(
+)
+bash_opts=(
+    bash
+)
+declarationsFor() {
+    while [[ $# -gt 0 ]]; do
+        if declare -F "$1" &>/dev/null; then
+            declare -f -- "$1"
+        else
+            case $1 in (*=*) declare -- "$1"; v=${1%%=*} ;; (*) v=$1 ;; esac
+            declare -p -- "$v"
+            # TODO support when fn is neither a variable nor a function (probably a command)
+        fi
+        shift
+    done
 }
 
 # how to duplicate one git worktree to another
