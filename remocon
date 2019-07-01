@@ -92,6 +92,7 @@ $verbose || {
     alias x=''
 }
 x_prefix_for_remote() { echo "+ $1$ "; }
+silently() { "$@"; } 2>/dev/null
 
 mkdelegate() {
     : echo 'generates an executable file for delegating with extra options'
@@ -119,7 +120,7 @@ rbc() {
     # prepare command sequence from given function, variable names
     ! [[ -t 1 ]] || : ${force_color:=true}
     set -- "force_color=${force_color:-}" coloring \
-        error warning info \
+        error warning info silently \
         rbc x x_prefix_for_remote @q declarationsFor in_full_tty cmdseq \
         "$@"
     set -- "$@" "$_rbc_fn"  # adding some core names to include
@@ -189,20 +190,19 @@ remocon.dup() {
     local commit branch
     eval "$(rbc "$src_hostpath" _remocon_read_git_HEAD)"
     _remocon_git_init() {
-        # set -x
         [[ -e .git ]] || x git init
         # lift some git config to allow push
         x git config receive.denyCurrentBranch ignore
     }
     _remocon_git_push() {
-        x git remote add remocon/remote "$host:$dir" 2>/dev/null ||
+        x silently git remote add remocon/remote "$host:$dir" ||
             x git remote set-url remocon/remote "$host:$dir"
-        x git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
+        x silently git push -q -f remocon/remote HEAD:"$branch" || {
             rbc "$dst_hostpath" _remocon_git_init
             x git push -f remocon/remote HEAD:"$branch"
         }
         # TODO transfer git config to destination
-        git remote remove remocon/remote
+        x git remote remove remocon/remote
     }
     # TODO pull if dst is localhost
     rbc "$src_hostpath" _remocon_git_push host dir dst_hostpath branch _remocon_git_init
