@@ -169,11 +169,11 @@ declarationsFor() {
 remocon.dup() {
     (
     set -euo pipefail
-    hostpath=$1; shift
+    dst_hostpath=$1; shift
     # TODO src_hostpath and dst_hostpath
-    case $hostpath in
-        (*:*) host=${hostpath%%:*} dir=${hostpath#*:};;
-        (*) error "$hostpath: HOST[:PATH] required";;
+    case $dst_hostpath in
+        (*:*) host=${dst_hostpath%%:*} dir=${dst_hostpath#*:};;
+        (*) error "$dst_hostpath: HOST[:PATH] required";;
     esac
     commit=$(git rev-parse HEAD)
     branch=$(git symbolic-ref --short HEAD)
@@ -187,7 +187,7 @@ remocon.dup() {
             # lift some git config to allow push
             x git config receive.denyCurrentBranch ignore
         }
-        rbc "$hostpath" _remocon_git_init
+        rbc "$dst_hostpath" _remocon_git_init
         x git push -f remocon/remote HEAD:"$branch"
     }
     # TODO transfer git config to destination
@@ -217,10 +217,10 @@ remocon.dup() {
         x git reset --hard $commit
         _actually_rm_files_deleted_from_git_index_that_come_from HEAD@{1}  # (necessary as git-reset does not always handle delete files cleanly)
     }
-    rbc "$hostpath" _remocon_reset_to_HEAD branch commit patch _actually_rm_files_deleted_from_git_index_that_come_from
+    rbc "$dst_hostpath" _remocon_reset_to_HEAD branch commit patch _actually_rm_files_deleted_from_git_index_that_come_from
     # send staged and unstaged changes
     _remocon_write_patch() { tee "$patch" >/dev/null; }
-    x git diff --full-index --binary HEAD | rbc "$hostpath" _remocon_write_patch patch
+    x git diff --full-index --binary HEAD | rbc "$dst_hostpath" _remocon_write_patch patch
     _remocon_apply_patch() {
         # with the same outstanding changes on top of the current commit
         ! [[ -s "$patch" ]] || x git apply --binary --apply --stat --cached "$patch"
@@ -229,14 +229,14 @@ remocon.dup() {
         # (however, git-checkout does not handle deleted files nicely, so ensuring any files in HEAD that fell into --others are removed)
         _actually_rm_files_deleted_from_git_index_that_come_from HEAD
     }
-    rbc "$hostpath" _remocon_apply_patch patch _actually_rm_files_deleted_from_git_index_that_come_from
+    rbc "$dst_hostpath" _remocon_apply_patch patch _actually_rm_files_deleted_from_git_index_that_come_from
     # replicate staged changes AKA .git/index
-    x git diff --full-index --binary --cached | rbc "$hostpath" _remocon_write_patch patch=.git/tethered-index.patch
+    x git diff --full-index --binary --cached | rbc "$dst_hostpath" _remocon_write_patch patch=.git/tethered-index.patch
     _remocon_apply_patch_index() {
         x git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
         ! [[ -s "$patch" ]] || x git apply --binary --apply --cached "$patch"
     }
-    rbc "$hostpath" _remocon_apply_patch_index patch=.git/tethered-index.patch
+    rbc "$dst_hostpath" _remocon_apply_patch_index patch=.git/tethered-index.patch
     )
 }
 
