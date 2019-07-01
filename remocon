@@ -109,11 +109,12 @@ mkdelegate() {
 
 # remote bash call -- run on given remote host:workdir given bash function, sending variable and function declarations
 rbc() {
-    local hostworkdir=$1; shift
-    local fn=$1; shift
-    case $hostworkdir in
-        (*:*) host=${hostworkdir%%:*} workdir=${hostworkdir#*:};;
-        (*) error "$hostworkdir: HOST[:PATH] required";;
+    local _rbc_hostworkdir=$1; shift
+    local _rbc_fn=$1; shift
+    local _rbc_host _rbc_workdir
+    case $_rbc_hostworkdir in
+        (*:*) _rbc_host=${_rbc_hostworkdir%%:*} _rbc_workdir=${_rbc_hostworkdir#*:};;
+        (*) error "$_rbc_hostworkdir: HOST[:PATH] required";;
     esac
     # prepare command sequence from given function, variable names
     ! [[ -t 1 ]] || : ${force_color:=true}
@@ -121,38 +122,39 @@ rbc() {
         error warning info \
         rbc x x_prefix_for_remote @q declarationsFor in_full_tty cmdseq \
         "$@"
-    set -- "$@" "$fn"  # adding some core names to include
-    local decls
-    decls=$(declarationsFor "$@")
+    set -- "$@" "$_rbc_fn"  # adding some core names to include
+    local _rbc_decls
+    _rbc_decls=$(declarationsFor "$@")
     set -- \
         "set -eu" \
         "cd" \
-        "mkdir -p $(@q "$workdir")" \
-        "cd $(@q "$workdir")" \
-        "PS4=$(@q "$(x_prefix_for_remote "$hostworkdir")")" \
-        "$decls" \
-        "$fn"
+        "mkdir -p $(@q "$_rbc_workdir")" \
+        "cd $(@q "$_rbc_workdir")" \
+        "PS4=$(@q "$(x_prefix_for_remote "$_rbc_hostworkdir")")" \
+        "$_rbc_decls" \
+        "$_rbc_fn"
     # determine how to run the function
+    local _rbc_ssh_opts _rbc_bash_opts
+    _rbc_ssh_opts=(
+    )
+    _rbc_bash_opts=(
+        bash
+    )
     if in_full_tty; then
         # when stdin/out/err is a fully functional terminal
-        ssh_opts+=(-t)   # ask ssh for tty
-        bash_opts+=(-i)  # ask bash for an interactive shell
+        _rbc_ssh_opts+=(-t)   # ask ssh for tty
+        _rbc_bash_opts+=(-i)  # ask bash for an interactive shell
     fi
-    set -- "${bash_opts[@]}" -c "$(cmdseq "$@")"
-    case $host in
+    set -- "${_rbc_bash_opts[@]}" -c "$(cmdseq "$@")"
+    case $_rbc_host in
         localhost)  # special case: run it directly if on same host
             "$@"
             ;;
         *)  # send it over to remote via ssh by default
-            ssh "$host" "${ssh_opts[@]:---}" "$(@q "$@")"
+            ssh "$_rbc_host" "${_rbc_ssh_opts[@]:---}" "$(@q "$@")"
             ;;
     esac
 }
-ssh_opts=(
-)
-bash_opts=(
-    bash
-)
 declarationsFor() {
     while [[ $# -gt 0 ]]; do
         if declare -F "$1" &>/dev/null; then
@@ -179,24 +181,31 @@ remocon.dup() {
     esac
     ########################################
     # ensure destination git clone has the source's commit
+    _remocon_read_git_HEAD() {
+        commit=$(git rev-parse HEAD)
+        branch=$(git symbolic-ref --short HEAD)
+        declare -p commit branch
+    }
+    local commit branch
+    eval "$(rbc "$src_hostpath" _remocon_read_git_HEAD)"
     _remocon_git_init() {
         # set -x
         [[ -e .git ]] || x git init
         # lift some git config to allow push
         x git config receive.denyCurrentBranch ignore
     }
-    # TODO wrap below in a rbc "$src_hostpath"
-    commit=$(git rev-parse HEAD)
-    branch=$(git symbolic-ref --short HEAD)
-    x git remote add remocon/remote "$host:$dir" 2>/dev/null ||
-        x git remote set-url remocon/remote "$host:$dir"
-    # TODO pull if dst is localhost
-    x git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
-        rbc "$dst_hostpath" _remocon_git_init
-        x git push -f remocon/remote HEAD:"$branch"
+    _remocon_git_push() {
+        x git remote add remocon/remote "$host:$dir" 2>/dev/null ||
+            x git remote set-url remocon/remote "$host:$dir"
+        x git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
+            rbc "$dst_hostpath" _remocon_git_init
+            x git push -f remocon/remote HEAD:"$branch"
+        }
+        # TODO transfer git config to destination
+        git remote remove remocon/remote
     }
-    # TODO transfer git config to destination
-    git remote remove remocon/remote
+    # TODO pull if dst is localhost
+    rbc "$src_hostpath" _remocon_git_push host dir dst_hostpath branch _remocon_git_init
     ########################################
     _actually_rm_files_deleted_from_git_index_that_come_from() {
         local commit=$1; shift
