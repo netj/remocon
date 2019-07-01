@@ -202,8 +202,12 @@ remocon.dup() {
         # TODO transfer git config to destination
         x git remote remove remocon/remote
     }
-    # TODO pull if dst is localhost
-    rbc "$src_hostpath" _remocon_git_push host dir dst_hostpath branch _remocon_git_init
+    if [[ ! $src_hostpath = localhost:* && $dst_hostpath = localhost:* ]]; then
+        error "pulling git from remote host to local not supported yet"
+        # TODO pull if dst is localhost
+    else
+        rbc "$src_hostpath" _remocon_git_push host dir dst_hostpath branch _remocon_git_init
+    fi
     ########################################
     _actually_rm_files_deleted_from_git_index_that_come_from() {
         local commit=$1; shift
@@ -382,9 +386,11 @@ remocon.run() {
 
 # get remote changes back to local
 remocon.get() {
-    [[ $# -gt 0 ]] || set -- .
+    if [[ $# -eq 0 ]]; then
+        error "pulling git from remote host to local not supported yet; specify relative path args to rsync"
+        remocon.dup localhost:"$(git rev-parse --show-toplevel)" "$remote_host:$remote_repo"
+    else
     info "⏬ [$remote_host:$remote_workdir] getting remote files under $# paths: $(@q "$@")"
-    # TODO remocon.dup $remote_hostrepo $local_hostrepo
     # TODO use git in case rsync is not available?
     x rsync \
         --archive \
@@ -397,22 +403,24 @@ remocon.get() {
         $(! $verbose || echo '--progress --verbose') \
         --relative --rsync-path="$(printf 'cd; mkdir -p %q && cd %q &>/dev/null && rsync' "$remote_workdir" "$remote_workdir")" \
         "$remote_host":"$(@q "$@")" .
+    fi
 } </dev/null >&2
 
 # programming round-trip mode (put-run-get)
 remocon.prg() {
     # find which paths to get from given args
     # (NOTE path list can be terminated by a double-dash `--` to delinate the command to run)
+    local dashdash=false
     local pathsToPull=
     pathsToPull=()
     while [[ $# -gt 0 ]]; do
         local arg=$1; shift
         case $arg in
-            --) break ;;
+            --) dashdash=true; break ;;
             *) pathsToPull+=("$arg")
         esac
     done
-    # TODO require a non-empty pathsToPull or default to .
+    $dashdash || error 'zero or more paths to get after running must be specified before a double-dash `--`'
 
     # run command if any were given (after a dash-dash)
     local exitStatus=0
