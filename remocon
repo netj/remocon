@@ -127,7 +127,7 @@ rbc() {
     local _rbc_decls
     _rbc_decls=$(declarationsFor "$@")
     set -- \
-        "set -eu" \
+        "set -euo pipefail" \
         "cd" \
         "mkdir -p $(@q "$_rbc_workdir")" \
         "cd $(@q "$_rbc_workdir")" \
@@ -172,7 +172,6 @@ declarationsFor() {
 # how to duplicate one git worktree to another
 # Origin: https://github.com/netj/bpm/blob/master/plugin/git-helper
 remocon.dup() {
-    set -euo pipefail
     local dst_hostpath=$1; shift
     local src_hostpath="${1:-localhost:${PWD#$HOME/}}"; [[ $# -eq 0 ]] || shift
     case $dst_hostpath in
