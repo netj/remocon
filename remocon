@@ -172,7 +172,6 @@ declarationsFor() {
 # how to duplicate one git worktree to another
 # Origin: https://github.com/netj/bpm/blob/master/plugin/git-helper
 remocon.dup() {
-    (
     set -euo pipefail
     local src_hostpath=localhost:"${PWD#$HOME/}"  # TODO parameterize
     local dst_hostpath=$1; shift
@@ -255,7 +254,6 @@ remocon.dup() {
     local patch=.git/tethered-index.patch
     rbc "$src_hostpath" _remocon_make_patch_index | rbc "$dst_hostpath" _remocon_write_patch patch
     rbc "$dst_hostpath" _remocon_apply_patch_index patch
-    )
 }
 
 ################################################################################
