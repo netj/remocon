@@ -119,7 +119,8 @@ rbc() {
     ! [[ -t 1 ]] || : ${force_color:=true}
     set -- "force_color=${force_color:-}" coloring \
         error warning info \
-        x @q rbc "$@"
+        rbc x x_prefix_for_remote @q declarationsFor in_full_tty cmdseq \
+        "$@"
     set -- "$@" "$fn"  # adding some core names to include
     local decls
     decls=$(declarationsFor "$@")
