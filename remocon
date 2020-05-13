@@ -84,6 +84,7 @@ git-tether-remote() {
             [[ -e .git ]] || git init
             # lift some git config to allow push
             git config receive.denyCurrentBranch ignore
+            git config receive.shallowUpdate true
         "
         git push -f remocon/remote HEAD:"$branch"
     }
