@@ -93,7 +93,7 @@ git-tether-remote() {
     # bring destination to the current commit
     command-that-actually-rm-files-deleted-from-git-index-that-come-from() {
         local commit=$1; shift
-        echo "comm -12 <(git ls-tree -r --name-only $(@q "$commit") | sort) <(git ls-files --others --exclude-standard | sort) | tr '\\n' '\\0' | xargs -0 rm -f"
+        echo "comm -12 <(git ls-tree -r --name-only $(@q "$commit") 2>/dev/null | sort) <(git ls-files --others --exclude-standard | sort) | tr '\\n' '\\0' | xargs -0 rm -f"
     }
     bash_remotely "# set -x
         cd $(@q "$dir")
