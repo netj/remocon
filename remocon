@@ -174,10 +174,6 @@ declarationsFor() {
 remocon.dup() {
     local dst_hostpath=$1; shift
     local src_hostpath="${1:-localhost:${PWD#$HOME/}}"; [[ $# -eq 0 ]] || shift
-    case $dst_hostpath in
-        (*:*) host=${dst_hostpath%%:*} dir=${dst_hostpath#*:};;
-        (*) error "$dst_hostpath: HOST[:PATH] required";;
-    esac
     ########################################
     # ensure destination git clone has the source's commit
     _remocon_read_git_HEAD() {
@@ -193,8 +189,13 @@ remocon.dup() {
         x git config receive.denyCurrentBranch ignore
     }
     _remocon_git_push() {
-        x silently git remote add remocon/remote "$host:$dir" ||
-            x git remote set-url remocon/remote "$host:$dir"
+        # running git pull from $src_hostpath
+        case $dst_hostpath in
+            (*:*) local dst_host=${dst_hostpath%%:*} dst_dir=${dst_hostpath#*:};;
+            (*) error "$dst_hostpath: HOST[:PATH] required";;
+        esac
+        x silently git remote add remocon/remote "$dst_host:$dst_dir" ||
+            x git remote set-url remocon/remote "$dst_host:$dst_dir"
         x silently git push -q -f remocon/remote HEAD:"$branch" || {
             rbc "$dst_hostpath" _remocon_git_init
             x git push -f remocon/remote HEAD:"$branch"
@@ -202,11 +203,28 @@ remocon.dup() {
         # TODO transfer git config to destination
         x git remote remove remocon/remote
     }
+    _remocon_git_fetch() {
+        # running git fetch from $dst_hostpath
+        case $src_hostpath in
+            (*:*) local src_host=${src_hostpath%%:*} src_dir=${src_hostpath#*:};;
+            (*) error "$src_hostpath: HOST[:PATH] required";;
+        esac
+        x silently git remote add remocon/remote "$src_host:$src_dir" || {
+            _remocon_git_init
+            x silently git remote add remocon/remote "$src_host:$src_dir" ||
+                x git remote set-url remocon/remote "$src_host:$src_dir"
+        }
+        x silently git fetch -q remocon/remote "$branch" || {
+            x git fetch remocon/remote "$branch"
+        }
+        # TODO transfer git config from $src_hostpath
+        x git remote remove remocon/remote
+    }
     if [[ ! $src_hostpath = localhost:* && $dst_hostpath = localhost:* ]]; then
-        error "pulling git from remote host to local not supported yet"
-        # TODO pull if dst is localhost
+        # need to git fetch if dst is localhost since it's not reachable for git push from src
+        rbc "$dst_hostpath" _remocon_git_fetch src_hostpath branch _remocon_git_init
     else
-        rbc "$src_hostpath" _remocon_git_push host dir dst_hostpath branch _remocon_git_init
+        rbc "$src_hostpath" _remocon_git_push dst_hostpath branch _remocon_git_init
     fi
     ########################################
     _actually_rm_files_deleted_from_git_index_that_come_from() {
@@ -387,8 +405,8 @@ remocon.run() {
 # get remote changes back to local
 remocon.get() {
     if [[ $# -eq 0 ]]; then
-        error "pulling git from remote host to local not supported yet; specify relative path args to rsync"
-        remocon.dup localhost:"$(git rev-parse --show-toplevel)" "$remote_host:$remote_repo"
+    info "⏬ [$remote_host:$remote_workdir] getting remote changes for git tracked files"
+    remocon.dup localhost:"$(git rev-parse --show-toplevel)" "$remote_host:$remote_repo"
     else
     info "⏬ [$remote_host:$remote_workdir] getting remote files under $# paths: $(@q "$@")"
     # TODO use git in case rsync is not available?
