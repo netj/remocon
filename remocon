@@ -200,7 +200,7 @@ remocon.dup() {
             rbc "$dst_hostpath" _remocon_git_init
             x git push -f remocon/remote HEAD:"$branch"
         }
-        # TODO transfer git config to destination
+        # TODO transfer local git config to $dst_hostpath
         x git remote remove remocon/remote
     }
     _remocon_git_fetch() {
