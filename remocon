@@ -406,7 +406,7 @@ remocon.get() {
     fi
 } </dev/null >&2
 
-# programming round-trip mode (put-run-get)
+# programming round-trip mode (P-R-G for put, run, then get)
 remocon.prg() {
     # find which paths to get from given args
     # (NOTE path list can be terminated by a double-dash `--` to delinate the command to run)
