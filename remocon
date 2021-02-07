@@ -94,20 +94,6 @@ $verbose || {
 x_prefix_for_remote() { echo "+ $1$ "; }
 silently() { "$@"; } 2>/dev/null
 
-mkdelegate() {
-    : echo 'generates an executable file for delegating with extra options'
-    : echo
-    : echo 'mkdelegate FILE ABS_PATH_TO_COMMAND [OPTION...]'
-    local file=$1; shift
-    mkdir -p "$(dirname "$file")"
-    local script=$(
-        echo '#!/bin/sh'
-        echo "$(@q exec "$@")" '"$@"'
-    )
-    diff -q <(echo "$script") "$file" &>/dev/null || echo "$script" >"$file"
-    chmod +x "$file"
-}
-
 # remote bash call -- run on given remote host:workdir given bash function, sending variable and function declarations
 rbc() {
     local _rbc_hostworkdir=$1; shift
@@ -167,6 +153,20 @@ declarationsFor() {
         fi
         shift
     done
+}
+
+mkdelegate() {
+    : echo 'generates an executable file for delegating with extra options'
+    : echo
+    : echo 'mkdelegate FILE ABS_PATH_TO_COMMAND [OPTION...]'
+    local file=$1; shift
+    mkdir -p "$(dirname "$file")"
+    local script=$(
+        echo '#!/bin/sh'
+        echo "$(@q exec "$@")" '"$@"'
+    )
+    diff -q <(echo "$script") "$file" &>/dev/null || echo "$script" >"$file"
+    chmod +x "$file"
 }
 
 # how to duplicate one git worktree to another
