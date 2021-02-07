@@ -20,29 +20,139 @@
 ##
 set -euo pipefail
 
-error()   { echo >&2 "📡 ‼️ " "$@"; false; }
-warning() { echo >&2 "📡 ⚠️ " "$@"; }
-info()    { echo >&2 "📡" "$@"; }
-
-in_full_tty() { [[ -t 0 && -t 1 && -t 2 ]]; }
+: ${verbose:=false}
+: ${remote_tmux:=true}
+: ${remote:=localhost} # defaults to not running things remotely
 
 ################################################################################
 
+coloring() {
+    local c=$1; shift
+    if ${force_color:-false} || [[ -t 1 ]]; then
+        local           red=$'\E[0;31m'
+        local         green=$'\E[0;32m'
+        local          blue=$'\E[0;34m'
+        local          cyan=$'\E[0;36m'
+        local       magenta=$'\E[0;35m'
+        local        yellow=$'\E[0;33m'
+        local         black=$'\E[0;30m'
+        local          gray=$'\E[0;37m'
+        local         white=$'\E[0;38m'
+        local     light_red=$'\E[1;31m'
+        local   light_green=$'\E[1;32m'
+        local    light_blue=$'\E[1;34m'
+        local    light_cyan=$'\E[1;36m'
+        local light_magenta=$'\E[1;35m'
+        local  light_yellow=$'\E[1;33m'
+        local   light_white=$'\E[1;37m'
+        local      no_color=$'\E[0m'
+        local out
+        out=$("$@")
+        echo "${!c}$out$no_color"
+    else
+        "$@"
+    fi
+}
+error()   { coloring light_red    echo >&2 "📡 ‼️ " "$@"; false; }
+warning() { coloring light_yellow echo >&2 "📡 ⚠️ " "$@"; }
+info()    { coloring       cyan   echo >&2 "📡"    "$@"; }
+
+in_full_tty() { [[ -t 0 && -t 1 && -t 2 ]]; }
+
 # a nimble/simple way to use bash -x itself to get single-quoted escapes instead of backslashes given by printf %q
 @q() {
-    local e
-    e=$(PS4= bash --norc -xc ': "$@"' -- "$@" 2>&1)
-    echo "${e:2}"
+    if [[ $# -eq 0 ]]; then  # quote each line in stdin
+        sed "s/'/'\\\\''/g; s/^/'/; s/\$/'/"
+    else
+        local e
+        e=$(PS4= bash --norc -xc ': "$@"' -- "$@" 2>&1)
+        echo "${e:2}"
+    fi
 }
 # a handy way to compose a shell script that consists of multiple commands in one shot
-cmdseq() { printf '%s; ' "$@"; }
+cmdseq() {
+    : ${cmdsep:="; "}
+    local cmd sep=
+    for cmd; do
+        [[ -n $cmd ]] || continue
+        printf "$sep%s" "$cmd"
+        sep=$cmdsep
+    done
+}
 # a handy way to show what command is running
 x() {
     (
         case ${1:-} in (builtin|command) shift;; esac
-        echo "$PS4$(@q "$@")"
+        coloring blue echo "$PS4$(@q "$@")"
     ) >&2
     "$@"
+}
+$verbose || {
+    x() { "$@"; }
+    alias x=''
+}
+x_prefix_for_remote() { echo "+ $1$ "; }
+silently() { "$@"; } 2>/dev/null
+
+# remote bash call -- run on given remote host:workdir given bash function, sending variable and function declarations
+rbc() {
+    local _rbc_hostworkdir=$1; shift
+    local _rbc_fn=$1; shift
+    local _rbc_host _rbc_workdir
+    case $_rbc_hostworkdir in
+        (*:*) _rbc_host=${_rbc_hostworkdir%%:*} _rbc_workdir=${_rbc_hostworkdir#*:};;
+        (*) error "$_rbc_hostworkdir: HOST[:PATH] required";;
+    esac
+    # prepare command sequence from given function, variable names
+    ! [[ -t 1 ]] || : ${force_color:=true}
+    set -- "force_color=${force_color:-}" coloring \
+        error warning info silently \
+        rbc x x_prefix_for_remote @q declarationsFor in_full_tty cmdseq \
+        "$@"
+    set -- "$@" "$_rbc_fn"  # adding some core names to include
+    local _rbc_decls
+    _rbc_decls=$(declarationsFor "$@")
+    set -- \
+        "set -euo pipefail" \
+        "cd" \
+        "mkdir -p $(@q "$_rbc_workdir")" \
+        "cd $(@q "$_rbc_workdir")" \
+        "PS4=$(@q "$(x_prefix_for_remote "$_rbc_hostworkdir")")" \
+        "$_rbc_decls" \
+        "$_rbc_fn"
+    # determine how to run the function
+    local _rbc_ssh_opts _rbc_bash_opts
+    _rbc_ssh_opts=(
+    )
+    _rbc_bash_opts=(
+        bash
+    )
+    if in_full_tty; then
+        # when stdin/out/err is a fully functional terminal
+        _rbc_ssh_opts+=(-t)   # ask ssh for tty
+        _rbc_bash_opts+=(-i)  # ask bash for an interactive shell
+    fi
+    set -- "${_rbc_bash_opts[@]}" -c "$(cmdseq "$@")"
+    case $_rbc_host in
+        localhost)  # special case: run it directly if on same host
+            "$@"
+            ;;
+        *)  # send it over to remote via ssh by default
+            ssh "$_rbc_host" "${_rbc_ssh_opts[@]:---}" "$(@q "$@")"
+            ;;
+    esac
+}
+declarationsFor() {
+    while [[ $# -gt 0 ]]; do
+        if declare -F "$1" &>/dev/null; then
+            declare -f -- "$1"
+        else
+            case $1 in (*=*) declare -- "$1"; v=${1%%=*} ;; (*) v=$1 ;; esac
+            declare -p -- "$v"
+            # TODO support when fn is neither a variable nor a function (probably a command)
+        fi
+        shift
+    done
 }
 
 mkdelegate() {
@@ -59,124 +169,141 @@ mkdelegate() {
     chmod +x "$file"
 }
 
-# a handy way to patch remote
-# See: https://github.com/netj/bpm/blob/master/plugin/git-helper
-git-tether-remote() {
-    (
-    set -euo pipefail
-    hostpath=$1; shift
-    case $hostpath in
-        (*:*) host=${hostpath%%:*} dir=${hostpath#*:};;
-        (*) error "$hostpath: HOST[:PATH] required";;
-    esac
-    commit=$(git rev-parse HEAD)
-    branch=$(git symbolic-ref --short HEAD)
-    bash_remotely() {
-        local script=$1; shift
-        ssh "$host" "$(@q bash -euc "PS4='++ '; $script" "$@")"
+# how to duplicate one git worktree to another
+# Origin: https://github.com/netj/bpm/blob/master/plugin/git-helper
+remocon.dup() {
+    local dst_hostpath=$1; shift
+    local src_hostpath="${1:-localhost:${PWD#$HOME/}}"; [[ $# -eq 0 ]] || shift
+    ########################################
+    # ensure destination git clone has the source's commit
+    _remocon_read_git_HEAD() {
+        commit=$(git rev-parse HEAD)
+        branch=$(git symbolic-ref --short HEAD)
+        declare -p commit branch
     }
-    git remote add remocon/remote "$host:$dir" 2>/dev/null ||
-        git remote set-url remocon/remote "$host:$dir"
-    git push -q -f remocon/remote HEAD:"$branch" 2>/dev/null || {
-        bash_remotely "# set -x
-            mkdir -p $(@q "$dir")
-            cd $(@q "$dir")
-            [[ -e .git ]] || git init
-            # lift some git config to allow push
-            git config receive.denyCurrentBranch ignore
-            git config receive.shallowUpdate true
-        "
-        git push -f remocon/remote HEAD:"$branch"
+    local commit branch
+    eval "$(rbc "$src_hostpath" _remocon_read_git_HEAD)"
+    _remocon_git_init() {
+        [[ -e .git ]] || x git init
+        # lift some git config to allow push
+        x git config receive.denyCurrentBranch ignore
+        x git config receive.shallowUpdate true
     }
-    # TODO transfer git config to destination
-    git remote remove remocon/remote
-    # bring destination to the current commit
-    command-that-actually-rm-files-deleted-from-git-index-that-come-from() {
+    _remocon_git_push() {
+        # running git pull from $src_hostpath
+        case $dst_hostpath in
+            (*:*) local dst_host=${dst_hostpath%%:*} dst_dir=${dst_hostpath#*:};;
+            (*) error "$dst_hostpath: HOST[:PATH] required";;
+        esac
+        x silently git remote add remocon/remote "$dst_host:$dst_dir" ||
+            x git remote set-url remocon/remote "$dst_host:$dst_dir"
+        x silently git push -q -f remocon/remote HEAD:"$branch" || {
+            rbc "$dst_hostpath" _remocon_git_init
+            x git push -f remocon/remote HEAD:"$branch"
+        }
+        # TODO transfer local git config to $dst_hostpath
+        x git remote remove remocon/remote
+    }
+    _remocon_git_fetch() {
+        # running git fetch from $dst_hostpath
+        case $src_hostpath in
+            (*:*) local src_host=${src_hostpath%%:*} src_dir=${src_hostpath#*:};;
+            (*) error "$src_hostpath: HOST[:PATH] required";;
+        esac
+        x silently git remote add remocon/remote "$src_host:$src_dir" || {
+            _remocon_git_init
+            x silently git remote add remocon/remote "$src_host:$src_dir" ||
+                x git remote set-url remocon/remote "$src_host:$src_dir"
+        }
+        x silently git fetch -q remocon/remote "$branch" || {
+            x git fetch remocon/remote "$branch"
+        }
+        # TODO transfer git config from $src_hostpath
+        x git remote remove remocon/remote
+    }
+    if [[ ! $src_hostpath = localhost:* && $dst_hostpath = localhost:* ]]; then
+        # need to git fetch if dst is localhost since it's not reachable for git push from src
+        rbc "$dst_hostpath" _remocon_git_fetch src_hostpath branch _remocon_git_init
+    else
+        rbc "$src_hostpath" _remocon_git_push dst_hostpath branch _remocon_git_init
+    fi
+    ########################################
+    _actually_rm_files_deleted_from_git_index_that_come_from() {
         local commit=$1; shift
-        echo "comm -12 <(git ls-tree -r --name-only $(@q "$commit") 2>/dev/null | sort) <(git ls-files --others --exclude-standard | sort) | tr '\\n' '\\0' | xargs -0 rm -f"
+        eval "set -- $(comm -12 <(git ls-tree -r --name-only "$commit" 2>/dev/null | sort) <(git ls-files --others --exclude-standard | sort) | @q)"
+        [[ $# -eq 0 ]] || x rm -f "$@"
     }
-    bash_remotely "# set -x
-        cd $(@q "$dir")
-        branch=$(@q "$branch")
-        commit=$(@q "$commit")
+    _remocon_reset_to_HEAD() {
         # reverse any previous patch for tethering
-        if [[ -s .git/tethered.patch ]]; then
-            git apply --binary -R <.git/tethered.patch || git stash
-            mv -f .git/tethered.patch{,~}
+        if [[ -s "$patch" ]]; then
+            x git apply --binary -R "$patch" || x git stash
+            x mv -f "$patch"{,~}
         fi
         if git rev-parse HEAD &>/dev/null; then
             # preserve any outstanding/untethered changes
-            git diff --quiet --exit-code HEAD -- || git stash
+            git diff --quiet --exit-code HEAD -- || x git stash
             # make sure we're on the tethered branch and commit
-            [[ \$(git symbolic-ref --short HEAD) = \$branch ]] || git checkout -f \$branch --
+            [[ $(git symbolic-ref --short HEAD) = $branch ]] || x git checkout -f $branch --
         else
             # no branch was checked out before
-            git checkout -f \$branch --
+            x git checkout -f $branch --
         fi
-        git reset --hard \$commit
-        $(command-that-actually-rm-files-deleted-from-git-index-that-come-from "HEAD@{1}")  # (necessary as git-reset does not always handle delete files cleanly)
-    "
-    # send staged and unstaged changes
-    git diff --full-index --binary HEAD |
-    bash_remotely "cat >$(@q "$dir")/.git/tethered.patch"
-    bash_remotely "# set -x
-        cd $(@q "$dir")
+        x git reset --hard $commit
+        _actually_rm_files_deleted_from_git_index_that_come_from HEAD@{1}  # (necessary as git-reset does not always handle delete files cleanly)
+    }
+    _remocon_make_patch() { x git diff --full-index --binary $for; }
+    _remocon_apply_patch() {
+        tee "$patch" >/dev/null
         # with the same outstanding changes on top of the current commit
-        ! [[ -s .git/tethered.patch ]] || git apply --binary --apply --stat --cached <.git/tethered.patch
+        ! [[ -s "$patch" ]] || x git apply --binary --apply --stat --cached "$patch"
         # (relying on git-checkout from current git index takes care of a lot, such as permissions, symlinks)
-        git checkout --quiet .
+        x git checkout --quiet .
         # (however, git-checkout does not handle deleted files nicely, so ensuring any files in HEAD that fell into --others are removed)
-        $(command-that-actually-rm-files-deleted-from-git-index-that-come-from "HEAD")
-        "
+        _actually_rm_files_deleted_from_git_index_that_come_from HEAD
+    }
+    _remocon_apply_patch_index() {
+        tee "$patch" >/dev/null
+        x git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
+        ! [[ -s "$patch" ]] || x git apply --binary --apply --cached "$patch"
+    }
+    # bring destination to the current commit
+    local patch=.git/tethered.patch
+    rbc "$dst_hostpath" _remocon_reset_to_HEAD branch commit patch _actually_rm_files_deleted_from_git_index_that_come_from
+    # send staged and unstaged changes
+    rbc "$src_hostpath" _remocon_make_patch for=HEAD |
+    rbc "$dst_hostpath" _remocon_apply_patch patch _actually_rm_files_deleted_from_git_index_that_come_from
     # replicate staged changes AKA .git/index
-    git diff --full-index --binary --cached |
-    bash_remotely "cat >$(@q "$dir")/.git/tethered-index.patch"
-    bash_remotely "# set -x
-        cd $(@q "$dir")
-        git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
-        ! [[ -s .git/tethered-index.patch ]] || git apply --binary --apply --cached <.git/tethered-index.patch
-        "
-    )
-}
-
-# defaults to not running things remotely
-remote_host=localhost
-remote_workdir=
-: ${remote_tmux:=true}
-ssh_opts=(
-)
-bash_opts=(
-    bash
-)
-# shorthand to run given sequence of commands remotely
-run-remotely() {
-    local script=$1; shift
-    if in_full_tty; then
-        # when I/O/Err is a fully functional terminal
-        ssh_opts+=(-t)   # ask ssh for tty
-        bash_opts+=(-i)  # ask bash for an interactive shell
-    fi
-    x ssh "$remote_host" \
-        "${ssh_opts[@]:---}" \
-        "$(@q "${bash_opts[@]}" -c "$(cmdseq "$@")")"
+    local patch=.git/tethered-index.patch
+    rbc "$src_hostpath" _remocon_make_patch for=--cached |
+    rbc "$dst_hostpath" _remocon_apply_patch_index patch
 }
 
 ################################################################################
-# common prep and sub-commands
+# common prep
 
-{
+remocon._init() {
+    remocon._parse_config
+    remocon._setup_ssh_booster
+    # break the ssh connection when interrupted, e.g., ControlPath can get stale
+    trap 'x ssh "$remote_host" -O stop' INT
+} </dev/null >/dev/null
+
+remocon._parse_config() {
+    {
     # make sure we're in a git work tree
     $(git rev-parse --is-inside-work-tree) ||
         error "$PWD: Not inside a git work tree"
 
+    # TODO migrate remocon.conf to git config
     # find closest .remocon.conf
+    local conf
     conf=$(
         until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
         ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
     )
 
     # load from .remocon.conf but let what's in environ override
-    ! declare -p remote &>/dev/null || remote_override=$remote
+    ! declare -p remote &>/dev/null || local remote_override=$remote
     ! [[ -e "$conf" ]] || source "$conf"
     ! declare -p remote_override &>/dev/null || remote=$remote_override
     # TODO let all remote_* vars to be overriddable by env vars, e.g., remote_tmux
@@ -185,18 +312,26 @@ run-remotely() {
     [[ -n ${remote:=} || ${1:-} = set ]] || error "No remote configured. Please run: remocon set"
 
     # parse remote
-    remote_host=${remote%%:*}
-    remote_repo_root=${remote#$remote_host}
-    remote_repo_root=${remote_repo_root#:}
-
-    # use local git work tree's basename and keep it under given remote_repo_root dir
-    remote_repo=${remote_repo_root:+$remote_repo_root/}$(basename "$(git rev-parse --show-toplevel)")
+    remocon._parse_remote
 
     # determine remote workdir based on where in the git repo we're in
+    local local_path_to_git_top local_path_within_git
+    local_path_to_git_top=$(git rev-parse --show-toplevel)
+    PS4=$(x_prefix_for_remote "localhost:${local_path_to_git_top#$HOME/}")  # to let `x` show more informative lines to stderr
     local_path_within_git=$(git rev-parse --show-prefix)
     remote_workdir="${remote_repo}/${local_path_within_git#/}"
+    } >&2
 
+    local v
+    for v in remote{,_{host,repo,workdir}} PS4
+    do @q "$v=${!v}"
+    done
+} </dev/null
+
+remocon._setup_ssh_booster() {
+    {
     # override ssh options/config
+    local sshBoosterOpts
     sshBoosterOpts=(
         # share an ssh connection across invocation
         -o ControlMaster=auto
@@ -205,15 +340,29 @@ run-remotely() {
         # forward agent
         -A
     )
-    sshBoosterRoot=~/.cache/remocon/ssh
+    local sshBoosterRoot=~/.cache/remocon/ssh
+    local cmd
     for cmd in scp ssh; do
         mkdelegate "$sshBoosterRoot"/bin/"$cmd" "$(type -p "$cmd")" "${sshBoosterOpts[@]}"
     done
-    PATH="$sshBoosterRoot"/bin:"$PATH"
-} </dev/null >&2
+    } >&2
 
-# break the ssh connection when interrupted, e.g., ControlPath can get stale
-trap 'x ssh "$remote_host" -O stop' INT
+    echo 'export PATH='"$(@q "$sshBoosterRoot"/bin)"':"$PATH"'
+} </dev/null
+
+remocon._parse_remote() {
+    # sets $remote_host and $remote_repo for given $remote
+    : ${local_repo_basename:=$(basename "$(git rev-parse --show-toplevel)")}
+    remote_host="${remote%%:*}"
+    local remote_repo_root
+    remote_repo_root=${remote#$remote_host}
+    remote_repo_root=${remote_repo_root#:}
+    # use local git work tree's basename and keep it under given remote_repo_root dir
+    remote_repo="${remote_repo_root:+$remote_repo_root/}$local_repo_basename"
+}
+
+################################################################################
+# sub-commands
 
 # prints configured remote, inferred remote_repo root, remote_workdir
 remocon.remote() { echo "$remote"; }
@@ -235,15 +384,25 @@ remocon.set() {
         local remote=$1; shift
     fi
     [[ -n $remote ]] || error "No remote specified"
-    info "[$remote] ⚙️ setting ~/.remocon.conf"
+    info "⚙️ [$remote] setting ~/.remocon.conf"
     printf >>~/.remocon.conf 'remote=%q\n' "$remote"
 }
 
-# tether remote git repo to local one
+# tether remote git repo(s) to local one
 remocon.put() {
-    [[ $# -eq 0 ]] || error "Cannot put partial changes under given paths: $(@q "$@")"
-    info "[$remote_host:$remote_repo/] 🛰 putting a replica of local git work tree on remote"
-    git-tether-remote "$remote_host:$remote_repo"
+    : ${remocon_put_keep_going:=false}
+    [[ $# -gt 0 ]] || set -- "$remote"
+    local num_put_failed=0
+    for remote; do
+        remocon._parse_remote
+        info "⏫ [$remote_host:$remote_repo/] putting a replica of local git work tree on remote"
+        remocon.dup "$remote_host:$remote_repo" ||
+            if $remocon_put_keep_going
+            then let ++num_put_failed
+            else false
+            fi
+    done
+    return $num_put_failed
 } </dev/null >&2
 
 # put and run given command on remote from the same workdir relative to the git top-level (AKA git prefix)
@@ -251,58 +410,49 @@ remocon.run() {
     remocon.put
 
     [[ $# -gt 0 ]] || set -- bash -il
-    info "[$remote_host:$remote_workdir] ⚡️ running command: $(@q "$@")"
+    info "▶️ [$remote_host:$remote_workdir] running command: $(@q "$@")"
 
-    case $remote_host in
-        localhost)
-            # just run given command when remote is local
-            warning "[$remote_host] Not running remotely"
-            x mkdir -p "$remote_workdir"
-            x cd "$remote_workdir"
-            x "$@"
-            ;;
-
-        *)
-            run-remotely \
-                'cd' \
-                'set -eu' \
-                "mkdir -p $(@q "$remote_workdir")" \
-                "cd $(@q "$remote_workdir")" \
-                "exec $(@q "$@")" \
-                #
-    esac
+    eval "_remocon_run_cmd() { x $(@q "$@"); }"
+    rbc "$remote_host:$remote_workdir" _remocon_run_cmd
 }
 
 # get remote changes back to local
 remocon.get() {
-    [[ $# -gt 0 ]] || set -- .
-    info "[$remote_host:$remote_workdir] 💎 getting remote files under $# paths: $(@q "$@")"
-    # TODO use git in case rsync is not available?
-    x rsync \
-        --verbose \
-        --archive \
-        --hard-links \
-        --omit-dir-times \
-        --checksum \
-        --copy-unsafe-links \
-        --exclude=.git \
-        --relative --rsync-path="$(printf 'cd; mkdir -p %q && cd %q &>/dev/null && rsync' "$remote_workdir" "$remote_workdir")" \
-        "$remote_host":"$(@q "$@")" .
+    if [[ $# -eq 0 ]]; then
+        info "⏬ [$remote_host:$remote_workdir] getting remote changes for git tracked files"
+        remocon.dup localhost:"$(git rev-parse --show-toplevel)" "$remote_host:$remote_repo"
+    else
+        info "⏬ [$remote_host:$remote_workdir] getting remote files under $# paths: $(@q "$@")"
+        # TODO use git in case rsync is not available?
+        x rsync \
+            --archive \
+            --hard-links \
+            --omit-dir-times \
+            --checksum \
+            --copy-unsafe-links \
+            --exclude=.git \
+            --partial \
+            $(! $verbose || echo '--progress --verbose') \
+            --relative --rsync-path="$(printf 'cd; mkdir -p %q && cd %q &>/dev/null && rsync' "$remote_workdir" "$remote_workdir")" \
+            "$remote_host":"$(@q "$@")" .
+    fi
 } </dev/null >&2
 
-# programming round-trip mode (put-run-get)
+# programming round-trip mode (P-R-G for put, run, then get)
 remocon.prg() {
     # find which paths to get from given args
     # (NOTE path list can be terminated by a double-dash `--` to delinate the command to run)
+    local dashdash=false
     local pathsToPull=
     pathsToPull=()
     while [[ $# -gt 0 ]]; do
         local arg=$1; shift
         case $arg in
-            --) break ;;
+            --) dashdash=true; break ;;
             *) pathsToPull+=("$arg")
         esac
     done
+    $dashdash || error 'zero or more paths to get after running must be specified before a double-dash `--`'
 
     # run command if any were given (after a dash-dash)
     local exitStatus=0
@@ -320,18 +470,23 @@ remocon.rec() {
     remocon.put
 
     if [[ $# -gt 0 ]]; then
-        info "[$remote_host:$remote_workdir] ✨ recording a new TMUX window with: $(@q "$@")"
+        info "⏺ [$remote_host:$remote_workdir] recording a new TMUX window with: $(@q "$@")"
         set -- "tmux send-keys C-L $(@q "$(@q "$@")") Enter"
         ! in_full_tty || warning "[$remote_host:$remote_workdir] attaching to the new TMUX window (TIP: append \` |:\` to command-line to prevent this)"
     elif in_full_tty; then
         # in a tty, provide a handy way to create a new window in the same TMUX session
-        info "[$remote_host:$remote_workdir] ✨ recording a new TMUX window for an interactive session"
+        info "⏺ [$remote_host:$remote_workdir] recording a new TMUX window for an interactive session"
     else
         error 'Missing command. remocon rec can attach to a new TMUX window in a tty, but requires a command otherwise.'
     fi
 
     # cd is better typed than relying on tmux's new-window/session -c option
-    set -- "tmux send-keys $(@q "cd; mkdir -p $(@q "$remote_workdir") && cd $(@q "$remote_workdir")") Enter" "$@"
+    set -- "tmux send-keys $(@q "$(cmdsep=" && " cmdseq \
+            "cd" \
+            "mkdir -p $(@q "$remote_workdir")" \
+            "cd $(@q "$remote_workdir")" \
+            #
+        )") Enter" "$@"
 
     # attach to the new tmux window when in a tty
     ! in_full_tty ||
@@ -340,35 +495,38 @@ remocon.rec() {
     # when interacting with tmux, doing it from a login shell may be slightly more desirable
     bash_opts+=(-l)
 
-    run-remotely \
-        'tmux start-server' \
-        'if [[ $(tmux list-sessions | wc -l) -eq 0 ]]' \
-        "then tmux new-session -d" \
-        "else tmux new-window    " \
-        'fi' \
-        "$@" \
-        #
+    _remocon_start_tmux_window() {
+        [[ $(tmux list-sessions 2>/dev/null | wc -l) -gt 0 ]] || x tmux new-session -d
+        x tmux new-window
+    }
+    eval "_remocon_rec_cmd() { $(cmdseq _remocon_start_tmux_window "${@/#/x }"); }"
+    rbc "$remote_host:$remote_workdir" _remocon_rec_cmd _remocon_start_tmux_window
 }
 
+
 ################################################################################
-# dispatch sub-commands
-
-if ! [[ $# -gt 0 ]]; then
-    if in_full_tty; then
-        # in a tty, defaults to replicating and opening a new TMUX window or an interactive/login shell on remote
-        if $remote_tmux; then
-            set -- rec
+# dispatching sub-commands
+remocon() {
+    if ! [[ $# -gt 0 ]]; then
+        if in_full_tty; then
+            # in a tty, defaults to replicating and opening a new TMUX window or an interactive/login shell on remote
+            if $remote_tmux; then
+                set -- rec
+            else
+                set -- run
+            fi
         else
-            set -- run
+            # otherwise, defaults to just replicating local git work tree to remote
+            set -- put
         fi
-    else
-        # otherwise, defaults to just replicating local git work tree to remote
-        set -- put
     fi
-fi
 
-cmd=$1; shift
-handler="remocon.$cmd"
-type "$handler" &>/dev/null ||
-    error "$cmd: No such command.  Command must be one of: set, put, run, get, prg, or rec"
-"$handler" "$@"
+    cmd=$1; shift
+    handler="remocon.$cmd"
+    type "$handler" &>/dev/null ||
+        error "$cmd: No such command.  Command must be one of: set, put, run, get, prg, or rec"
+    case $cmd in _*) ;; *) remocon._init ;; esac  # common prep for normal commands
+    "$handler" "$@"
+}
+
+remocon "$@"
