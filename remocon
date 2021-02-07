@@ -418,22 +418,22 @@ remocon.run() {
 # get remote changes back to local
 remocon.get() {
     if [[ $# -eq 0 ]]; then
-    info "⏬ [$remote_host:$remote_workdir] getting remote changes for git tracked files"
-    remocon.dup localhost:"$(git rev-parse --show-toplevel)" "$remote_host:$remote_repo"
+        info "⏬ [$remote_host:$remote_workdir] getting remote changes for git tracked files"
+        remocon.dup localhost:"$(git rev-parse --show-toplevel)" "$remote_host:$remote_repo"
     else
-    info "⏬ [$remote_host:$remote_workdir] getting remote files under $# paths: $(@q "$@")"
-    # TODO use git in case rsync is not available?
-    x rsync \
-        --archive \
-        --hard-links \
-        --omit-dir-times \
-        --checksum \
-        --copy-unsafe-links \
-        --exclude=.git \
-        --partial \
-        $(! $verbose || echo '--progress --verbose') \
-        --relative --rsync-path="$(printf 'cd; mkdir -p %q && cd %q &>/dev/null && rsync' "$remote_workdir" "$remote_workdir")" \
-        "$remote_host":"$(@q "$@")" .
+        info "⏬ [$remote_host:$remote_workdir] getting remote files under $# paths: $(@q "$@")"
+        # TODO use git in case rsync is not available?
+        x rsync \
+            --archive \
+            --hard-links \
+            --omit-dir-times \
+            --checksum \
+            --copy-unsafe-links \
+            --exclude=.git \
+            --partial \
+            $(! $verbose || echo '--progress --verbose') \
+            --relative --rsync-path="$(printf 'cd; mkdir -p %q && cd %q &>/dev/null && rsync' "$remote_workdir" "$remote_workdir")" \
+            "$remote_host":"$(@q "$@")" .
     fi
 } </dev/null >&2
 
