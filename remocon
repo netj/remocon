@@ -187,6 +187,7 @@ remocon.dup() {
         [[ -e .git ]] || x git init
         # lift some git config to allow push
         x git config receive.denyCurrentBranch ignore
+        x git config receive.shallowUpdate true
     }
     _remocon_git_push() {
         # running git pull from $src_hostpath
@@ -229,7 +230,7 @@ remocon.dup() {
     ########################################
     _actually_rm_files_deleted_from_git_index_that_come_from() {
         local commit=$1; shift
-        eval "set -- $(comm -12 <(git ls-tree -r --name-only "$commit" | sort) <(git ls-files --others --exclude-standard | sort) | @q)"
+        eval "set -- $(comm -12 <(git ls-tree -r --name-only "$commit" 2>/dev/null | sort) <(git ls-files --others --exclude-standard | sort) | @q)"
         [[ $# -eq 0 ]] || x rm -f "$@"
     }
     _remocon_reset_to_HEAD() {
