@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# remocon -- run given command remotely, replicating local git work tree on a remote host, and downloading remote changes if needed
+# remocon 0.6 -- run given command remotely, replicating local git work tree on a remote host, and downloading remote changes if needed
 #
 # Author: Jaeho Shin <netj@sparcs.org>
 # Created: 2018-03-08
@@ -503,6 +503,10 @@ remocon.rec() {
     rbc "$remote_host:$remote_workdir" _remocon_rec_cmd _remocon_start_tmux_window
 }
 
+# show version
+remocon.version() {
+    head -2 "$0" | grep -o 'remocon [^[:space:]]*'
+}
 
 ################################################################################
 # dispatching sub-commands
@@ -525,7 +529,7 @@ remocon() {
     handler="remocon.$cmd"
     type "$handler" &>/dev/null ||
         error "$cmd: No such command.  Command must be one of: set, put, run, get, prg, or rec"
-    case $cmd in _*) ;; *) remocon._init ;; esac  # common prep for normal commands
+    case $cmd in _*|version) ;; *) remocon._init ;; esac  # common prep for normal commands
     "$handler" "$@"
 }
 
