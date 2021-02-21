@@ -266,13 +266,13 @@ remocon.dup() {
         ! [[ -s "$patch" ]] || x git apply --binary --apply --cached "$patch"
     }
     # bring destination to the current commit
-    local patch=.git/tethered.patch
+    local patch=.git/remocon.patch
     rbc "$dst_hostpath" _remocon_reset_to_HEAD branch commit patch _actually_rm_files_deleted_from_git_index_that_come_from
     # send staged and unstaged changes
     rbc "$src_hostpath" _remocon_make_patch for=HEAD |
     rbc "$dst_hostpath" _remocon_apply_patch patch _actually_rm_files_deleted_from_git_index_that_come_from
     # replicate staged changes AKA .git/index
-    local patch=.git/tethered-index.patch
+    local patch=.git/remocon-index.patch
     rbc "$src_hostpath" _remocon_make_patch for=--cached |
     rbc "$dst_hostpath" _remocon_apply_patch_index patch
 }
