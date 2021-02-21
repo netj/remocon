@@ -302,11 +302,12 @@ remocon._parse_config() {
     if [[ -n "${remote:-}" ]]; then
         :
     elif remote=$(git config --get remocon.remote); then
-        remotes=$(git config --get-all remocon.remote)
+        :
     elif remote=$(git config --get remocon.baseurl); then
-        remotes=$remote  # FIXME maybe have remocon.put handle multiple $remotes instead of eagerly parsing them here
+        :
     else  # fallback to legacy behavior for now, finding remocon.conf
         # TODO deprecate .remocon.conf
+        # TODO warning
 
         # find closest .remocon.conf
         local conf
@@ -432,6 +433,7 @@ remocon._parse_remote() {
 remocon.remote() { echo "$remote"; }
 remocon.remote_repo() { echo "$remote_host:$remote_repo"; }
 remocon.remote_workdir() { echo "$remote_host:$remote_workdir"; }
+remocon.remotes() { git config --get-all remocon.remote || echo "$remote"; }
 
 # set up ~/.remocon.conf
 remocon.set() {
@@ -454,7 +456,7 @@ remocon.set() {
 
 # tether remote git repo(s) to local one
 remocon.put() {
-    [[ $# -gt 0 ]] || set -- "$remote"  # TODO $remotes (i.e., `git config --get-all remocon.remote`)
+    [[ $# -gt 0 ]] || set -- $(remocon.remotes)
     local num_put_failed=0
     for remote; do
         remocon._parse_remote
