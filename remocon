@@ -198,8 +198,11 @@ remocon.dup() {
             (*) error "$dst_hostpath: HOST[:PATH] required";;
         esac
         [[ ! "$remote_name" = remocon/* ]] ||
-        x silently git remote add "$remote_name" "$dst_host:$dst_dir" ||
-            x git remote set-url "$remote_name" "$dst_host:$dst_dir"
+        x silently git remote set-url "$remote_name" "$dst_host:$dst_dir" ||
+            x git remote add "$remote_name" "$dst_host:$dst_dir" || {
+                x git remote remove "$remote_name"
+                x git remote add "$remote_name" "$dst_host:$dst_dir"
+            }
         x silently git push -q -f "$remote_name" HEAD:"$branch" || {
             rbc "$dst_hostpath" _remocon_git_init
             x git push -f "$remote_name" HEAD:"$branch"
@@ -213,10 +216,14 @@ remocon.dup() {
             (*) error "$src_hostpath: HOST[:PATH] required";;
         esac
         [[ ! "$remote_name" = remocon/* ]] ||
-        x silently git remote add "$remote_name" "$src_host:$src_dir" || {
-            _remocon_git_init
-            x silently git remote add "$remote_name" "$src_host:$src_dir" ||
-                x git remote set-url "$remote_name" "$src_host:$src_dir"
+        x silently git remote set-url "$remote_name" "$src_host:$src_dir" || {
+            x git remote add "$remote_name" "$src_host:$src_dir" || {
+                _remocon_git_init
+                x git remote add "$remote_name" "$src_host:$src_dir" || {
+                    x git remote remove "$remote_name"
+                    x git remote add "$remote_name" "$src_host:$src_dir"
+                }
+            }
         }
         x silently git fetch -q "$remote_name" "$branch" || {
             x git fetch "$remote_name" "$branch"
