@@ -307,7 +307,6 @@ remocon._parse_config() {
         :
     else  # fallback to legacy behavior for now, finding remocon.conf
         # TODO deprecate .remocon.conf
-        # TODO warning
 
         # find closest .remocon.conf
         local conf
@@ -317,10 +316,12 @@ remocon._parse_config() {
         )
 
         # load from .remocon.conf but let what's in environ override
-        ! declare -p remote &>/dev/null || local remote_override=$remote
+        [[ -z "${remote:-}" ]] || local remote_override=$remote
         ! [[ -e "$conf" ]] || source "$conf"
         ! declare -p remote_override &>/dev/null || remote=$remote_override
 
+        ! [[ -e "$conf" && -n "$remote" ]] ||
+            warning "$conf: DEPRECATED! PLEASE MIGRATE TO: git config --global remocon.baseurl $(@q "$remote")"
     fi
 
     # require remote= to be set
