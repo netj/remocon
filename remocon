@@ -20,12 +20,6 @@
 ##
 set -euo pipefail
 
-: ${remote=}  # could be a git-remote name or a ssh user@host:path for remote git clone parent dir
-: ${verbose:=false}
-: ${remote_no_check:=false}
-: ${remote_no_tmux:=false}
-: ${remotes=$remote}
-
 ################################################################################
 
 coloring() {
@@ -88,10 +82,6 @@ x() {
         coloring blue echo "$PS4$(@q "$@")"
     ) >&2
     "$@"
-}
-$verbose || {
-    x() { "$@"; }
-    alias x=''
 }
 x_prefix_for_remote() { echo "+ $1$ "; }
 silently() { "$@"; } 2>/dev/null
@@ -291,19 +281,25 @@ remocon.dup() {
 # common prep
 
 remocon._init() {
-    remocon._parse_config
-    remocon._setup_ssh_booster
-    # break the ssh connection when interrupted, e.g., ControlPath can get stale
-    trap 'x ssh "$remote_host" -O stop' INT
+    ${_remocon_init:-false} || {
+        eval "$(remocon._parse_config)"
+        remocon._setup_ssh_booster
+        # break the ssh connection when interrupted, e.g., ControlPath can get stale
+        trap 'x ssh "$remote_host" -O stop' INT
+        declare -g -r _remocon_init=true
+    }
 } </dev/null >/dev/null
 
 remocon._parse_config() {
-    {
     # make sure we're in a git work tree
-    $(git rev-parse --is-inside-work-tree) ||
-        error "$PWD: Not inside a git work tree"
+    $(git rev-parse --is-inside-work-tree 2>/dev/null) || {
+        @q error "$PWD: Not inside a git work tree"
+        return
+    }
 
-    if [[ -n "$remote" ]]; then
+    (
+    {
+    if [[ -n "${remote:-}" ]]; then
         :
     elif remote=$(git config --get remocon.remote); then
         remotes=$(git config --get-all remocon.remote)
@@ -332,22 +328,41 @@ remocon._parse_config() {
     # parse remote
     remocon._parse_remote
 
-    # other configs  # FIXME ensure these git config take effective while overriddable by env vars
-    : ${remote_no_tmux:=$(git config --get remocon.tmux || echo true)}
-    : ${verbose:=$(git config --get remocon.verbose || echo false)}
-
     # determine remote workdir based on where in the git repo we're in
     local local_path_to_git_top local_path_within_git
     local_path_to_git_top=$(git rev-parse --show-toplevel)
-    PS4=$(x_prefix_for_remote "localhost:${local_path_to_git_top#$HOME/}")  # to let `x` show more informative lines to stderr
+    local ps4=$(x_prefix_for_remote "localhost:${local_path_to_git_top#$HOME/}")  # to let `x` show more informative lines to stderr
     local_path_within_git=$(git rev-parse --show-prefix)
     remote_workdir="${remote_repo}/${local_path_within_git#/}"
     } >&2
 
+    # print out side effects to make
     local v
-    for v in remote{,_{name,host,repo,workdir,nocheck,notmux}} PS4 verbose
-    do @q "$v=${!v}"
+    for v in \
+        remote \
+        remote_name \
+        remote_host \
+        remote_repo \
+        remote_workdir \
+        #
+    do @q declare -g -- "$v=${!v:-}"
     done
+    @q declare -g -- "PS4=$ps4"
+
+    # other $remocon_* / remocon.* git configs
+    _config_default_value_if_not_from_env_or_git_config() {
+        @q declare -g -- "$1=${!1:-$(git config --get "remocon.${1#remocon_}" || echo "$2")}"
+    }
+    _config_default_value_if_not_from_env_or_git_config remocon_verbose false
+    _config_default_value_if_not_from_env_or_git_config remocon_defaulttty rec
+    _config_default_value_if_not_from_env_or_git_config remocon_defaultnotty put
+    _config_default_value_if_not_from_env_or_git_config remocon_trustremote false
+    _config_default_value_if_not_from_env_or_git_config remocon_putkeepgoing false
+    echo '$remocon_verbose || {'
+    echo '  x() { "$@"; }'
+    echo '  alias x=""'
+    echo '}'
+    )
 } </dev/null
 
 remocon._setup_ssh_booster() {
@@ -405,8 +420,8 @@ remocon._parse_remote() {
     # sanity checks
     case $remote_host in
         git@github.*)
-            $remote_no_check ||
-            error "$remote ($git_remote_url): Unlikely host to support remote shell (remote_no_check=true to force)"
+            ${remocon_trustremote:-false} ||
+            error "$remote ($git_remote_url): Unlikely host to support remote shell (remocon_trustremote=true to force)"
     esac
 }
 
@@ -439,14 +454,13 @@ remocon.set() {
 
 # tether remote git repo(s) to local one
 remocon.put() {
-    : ${remocon_put_keep_going:=false}
     [[ $# -gt 0 ]] || set -- "$remote"  # TODO $remotes (i.e., `git config --get-all remocon.remote`)
     local num_put_failed=0
     for remote; do
         remocon._parse_remote
         info "⏫ [$remote_host:$remote_repo/] putting a replica of local git work tree on remote"
         remocon.dup "$remote_host:$remote_repo" ||
-            if $remocon_put_keep_going
+            if $remocon_putkeepgoing
             then let ++num_put_failed
             else false
             fi
@@ -481,7 +495,7 @@ remocon.get() {
             --copy-unsafe-links \
             --exclude=.git \
             --partial \
-            $(! $verbose || echo '--progress --verbose') \
+            $(! $remocon_verbose || echo '--progress --verbose') \
             --relative --rsync-path="$(printf 'cd; mkdir -p %q && cd %q &>/dev/null && rsync' "$remote_workdir" "$remote_workdir")" \
             "$remote_host":"$(@q "$@")" .
     fi
@@ -543,6 +557,7 @@ remocon.rec() {
 
     # when interacting with tmux, doing it from a login shell may be slightly more desirable
     bash_opts+=(-l)
+    # FIXME bash_opts no longer exists
 
     _remocon_start_tmux_window() {
         [[ $(tmux list-sessions 2>/dev/null | wc -l) -gt 0 ]] || x tmux new-session -d
@@ -560,17 +575,14 @@ remocon.version() {
 ################################################################################
 # dispatching sub-commands
 remocon() {
-    if ! [[ $# -gt 0 ]]; then
+    if [[ $# -eq 0 ]]; then
+        remocon._init
         if in_full_tty; then
             # in a tty, defaults to replicating and opening a new TMUX window or an interactive/login shell on remote
-            if $remote_no_tmux; then
-                set -- rec
-            else
-                set -- run
-            fi
+            set -- ${remocon_defaulttty:-rec}
         else
             # otherwise, defaults to just replicating local git work tree to remote
-            set -- put
+            set -- ${remocon_defaultnotty:-put}
         fi
     fi
 
