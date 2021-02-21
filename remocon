@@ -21,6 +21,7 @@
 set -euo pipefail
 
 : ${verbose:=false}
+: ${remote_no_check:=false}
 : ${remote_tmux:=true}
 : ${remote=}
 : ${remotes=$remote}
@@ -381,7 +382,6 @@ remocon._parse_remote() {
             *) error "$remote ($git_remote_url): Unrecognized remote format"
         esac
         remote_host=${git_remote_url%%:*}
-        # TODO refuse to push -f to $remote_host = github.*
         remote_repo=${git_remote_url#$remote_host:}
         remote_name=$remote
     else  # treat $remote as [user@]host[:path] for a $remote_repo_root
@@ -395,6 +395,12 @@ remocon._parse_remote() {
         remote_repo="${remote_repo_root:+$remote_repo_root/}$local_repo_basename"
         remote_name="remocon/${remote//[^A-Za-z0-9._\/-]/-}"
     fi
+    # sanity checks
+    case $remote_host in
+        git@github.*)
+            $remote_no_check ||
+            error "$remote ($git_remote_url): Unlikely host to support remote shell (remote_no_check=true to force)"
+    esac
 }
 
 ################################################################################
