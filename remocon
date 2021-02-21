@@ -320,7 +320,7 @@ remocon._parse_config() {
 
         ! [[ -e "$conf" && -n "$remote" ]] ||
             warning "$conf: DEPRECATED! PLEASE MIGRATE TO git config remocon.remote" \
-                    "BY RUNNING: remocon set $(@q "$remote")"
+                    "BY RUNNING: remocon set $(@q "$remote") --global"
     fi
 
     # require remote= to be set
@@ -439,7 +439,7 @@ remocon.remotes() {
     echo "$remote"
 }
 
-# set up ~/.remocon.conf
+# set up git config remocon.remote
 remocon.set() {
     local examples=$(echo \
         $'\n'"    user@example.org:tmp/repos       to put a clone of local git work tree 'foo' under 'tmp/repos/foo', or" \
@@ -454,8 +454,8 @@ remocon.set() {
         local remote=$1; shift
     fi
     [[ -n $remote ]] || error "No remote specified"
-    info "⚙️  setting git config remocon.remote (in ~/.gitconfig) to [$remote]"
-    x git config --global remocon.remote "$remote"
+    info "⚙️  setting remocon.remote to [$(@q "$remote")] in git config $(@q "$@")"
+    x git config "$@" remocon.remote "$remote"
 }
 
 # tether remote git repo(s) to local one
