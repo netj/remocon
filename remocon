@@ -23,7 +23,7 @@ set -euo pipefail
 : ${remote=}  # could be a git-remote name or a ssh user@host:path for remote git clone parent dir
 : ${verbose:=false}
 : ${remote_no_check:=false}
-: ${remote_tmux:=true}
+: ${remote_no_tmux:=false}
 : ${remotes=$remote}
 
 ################################################################################
@@ -333,7 +333,7 @@ remocon._parse_config() {
     remocon._parse_remote
 
     # other configs  # FIXME ensure these git config take effective while overriddable by env vars
-    : ${remote_tmux:=$(git config --get remocon.tmux || echo true)}
+    : ${remote_no_tmux:=$(git config --get remocon.tmux || echo true)}
     : ${verbose:=$(git config --get remocon.verbose || echo false)}
 
     # determine remote workdir based on where in the git repo we're in
@@ -345,7 +345,7 @@ remocon._parse_config() {
     } >&2
 
     local v
-    for v in remote{,_{host,repo,workdir}} PS4
+    for v in remote{,_{name,host,repo,workdir,nocheck,notmux}} PS4 verbose
     do @q "$v=${!v}"
     done
 } </dev/null
@@ -563,7 +563,7 @@ remocon() {
     if ! [[ $# -gt 0 ]]; then
         if in_full_tty; then
             # in a tty, defaults to replicating and opening a new TMUX window or an interactive/login shell on remote
-            if $remote_tmux; then
+            if $remote_no_tmux; then
                 set -- rec
             else
                 set -- run
