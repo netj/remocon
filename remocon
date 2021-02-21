@@ -22,7 +22,8 @@ set -euo pipefail
 
 : ${verbose:=false}
 : ${remote_tmux:=true}
-: ${remote:=localhost} # defaults to not running things remotely
+: ${remote=}
+: ${remotes=$remote}
 
 ################################################################################
 
@@ -195,14 +196,14 @@ remocon.dup() {
             (*:*) local dst_host=${dst_hostpath%%:*} dst_dir=${dst_hostpath#*:};;
             (*) error "$dst_hostpath: HOST[:PATH] required";;
         esac
-        x silently git remote add remocon/remote "$dst_host:$dst_dir" ||
-            x git remote set-url remocon/remote "$dst_host:$dst_dir"
-        x silently git push -q -f remocon/remote HEAD:"$branch" || {
+        [[ ! "$remote_name" = remocon/* ]] ||
+        x silently git remote add "$remote_name" "$dst_host:$dst_dir" ||
+            x git remote set-url "$remote_name" "$dst_host:$dst_dir"
+        x silently git push -q -f "$remote_name" HEAD:"$branch" || {
             rbc "$dst_hostpath" _remocon_git_init
-            x git push -f remocon/remote HEAD:"$branch"
+            x git push -f "$remote_name" HEAD:"$branch"
         }
         # TODO transfer local git config to $dst_hostpath
-        x git remote remove remocon/remote
     }
     _remocon_git_fetch() {
         # running git fetch from $dst_hostpath
@@ -210,22 +211,22 @@ remocon.dup() {
             (*:*) local src_host=${src_hostpath%%:*} src_dir=${src_hostpath#*:};;
             (*) error "$src_hostpath: HOST[:PATH] required";;
         esac
-        x silently git remote add remocon/remote "$src_host:$src_dir" || {
+        [[ ! "$remote_name" = remocon/* ]] ||
+        x silently git remote add "$remote_name" "$src_host:$src_dir" || {
             _remocon_git_init
-            x silently git remote add remocon/remote "$src_host:$src_dir" ||
-                x git remote set-url remocon/remote "$src_host:$src_dir"
+            x silently git remote add "$remote_name" "$src_host:$src_dir" ||
+                x git remote set-url "$remote_name" "$src_host:$src_dir"
         }
-        x silently git fetch -q remocon/remote "$branch" || {
-            x git fetch remocon/remote "$branch"
+        x silently git fetch -q "$remote_name" "$branch" || {
+            x git fetch "$remote_name" "$branch"
         }
         # TODO transfer git config from $src_hostpath
-        x git remote remove remocon/remote
     }
     if [[ ! $src_hostpath = localhost:* && $dst_hostpath = localhost:* ]]; then
         # need to git fetch if dst is localhost since it's not reachable for git push from src
-        rbc "$dst_hostpath" _remocon_git_fetch src_hostpath branch _remocon_git_init
+        rbc "$dst_hostpath" _remocon_git_fetch remote_name src_hostpath branch _remocon_git_init
     else
-        rbc "$src_hostpath" _remocon_git_push dst_hostpath branch _remocon_git_init
+        rbc "$src_hostpath" _remocon_git_push remote_name dst_hostpath branch _remocon_git_init
     fi
     ########################################
     _actually_rm_files_deleted_from_git_index_that_come_from() {
@@ -294,25 +295,38 @@ remocon._parse_config() {
     $(git rev-parse --is-inside-work-tree) ||
         error "$PWD: Not inside a git work tree"
 
-    # TODO migrate remocon.conf to git config
-    # find closest .remocon.conf
-    local conf
-    conf=$(
-        until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
-        ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
-    )
+    if [[ -n "$remote" ]]; then
+        :
+    elif remote=$(git config --get remocon.remote); then
+        remotes=$(git config --get-all remocon.remote)
+    elif remote=$(git config --get remocon.baseurl); then
+        remotes=$remote  # FIXME maybe have remocon.put handle multiple $remotes instead of eagerly parsing them here
+    else  # fallback to legacy behavior for now, finding remocon.conf
+        # TODO deprecate .remocon.conf
 
-    # load from .remocon.conf but let what's in environ override
-    ! declare -p remote &>/dev/null || local remote_override=$remote
-    ! [[ -e "$conf" ]] || source "$conf"
-    ! declare -p remote_override &>/dev/null || remote=$remote_override
-    # TODO let all remote_* vars to be overriddable by env vars, e.g., remote_tmux
+        # find closest .remocon.conf
+        local conf
+        conf=$(
+            until [[ $PWD = / || -e .remocon.conf ]]; do cd ..; done
+            ! [[ -e .remocon.conf ]] || echo "$PWD"/.remocon.conf
+        )
+
+        # load from .remocon.conf but let what's in environ override
+        ! declare -p remote &>/dev/null || local remote_override=$remote
+        ! [[ -e "$conf" ]] || source "$conf"
+        ! declare -p remote_override &>/dev/null || remote=$remote_override
+
+    fi
 
     # require remote= to be set
-    [[ -n ${remote:=} || ${1:-} = set ]] || error "No remote configured. Please run: remocon set"
+    [[ -n ${remote:=} || ${handler:-} = remocon.set ]] || error "No remote configured. Please run: remocon set"
 
     # parse remote
     remocon._parse_remote
+
+    # other configs  # FIXME ensure these git config take effective while overriddable by env vars
+    : ${remote_tmux:=$(git config --get remocon.tmux || echo true)}
+    : ${verbose:=$(git config --get remocon.verbose || echo false)}
 
     # determine remote workdir based on where in the git repo we're in
     local local_path_to_git_top local_path_within_git
@@ -351,14 +365,36 @@ remocon._setup_ssh_booster() {
 } </dev/null
 
 remocon._parse_remote() {
-    # sets $remote_host and $remote_repo for given $remote
-    : ${local_repo_basename:=$(basename "$(git rev-parse --show-toplevel)")}
-    remote_host="${remote%%:*}"
-    local remote_repo_root
-    remote_repo_root=${remote#$remote_host}
-    remote_repo_root=${remote_repo_root#:}
-    # use local git work tree's basename and keep it under given remote_repo_root dir
-    remote_repo="${remote_repo_root:+$remote_repo_root/}$local_repo_basename"
+    # first, assume $remote is a git remote name
+    local git_remote_url=
+    if git_remote_url=$(git config --get "remote.$remote.url"); then
+        # normalize `ssh://user@host/path` to `user@host:path`
+        case $git_remote_url in
+            ssh://*)
+                remote_host=${git_remote_url#ssh://}
+                remote_host=${remote_host%%/*}
+                local rest=${git_remote_url#ssh://$remote_host}
+                git_remote_url="$remote_host:${rest#/}"
+                ;;
+            *:*)  # desired ssh user@host:path format
+                ;;
+            *) error "$remote ($git_remote_url): Unrecognized remote format"
+        esac
+        remote_host=${git_remote_url%%:*}
+        # TODO refuse to push -f to $remote_host = github.*
+        remote_repo=${git_remote_url#$remote_host:}
+        remote_name=$remote
+    else  # treat $remote as [user@]host[:path] for a $remote_repo_root
+        # sets $remote_host and $remote_repo for given $remote
+        : ${local_repo_basename:=$(basename "$(git rev-parse --show-toplevel)")}
+        remote_host="${remote%%:*}"
+        local remote_repo_root
+        remote_repo_root=${remote#$remote_host}
+        remote_repo_root=${remote_repo_root#:}
+        # use local git work tree's basename and keep it under given remote_repo_root dir
+        remote_repo="${remote_repo_root:+$remote_repo_root/}$local_repo_basename"
+        remote_name="remocon/${remote//[^A-Za-z0-9._\/-]/-}"
+    fi
 }
 
 ################################################################################
@@ -384,14 +420,14 @@ remocon.set() {
         local remote=$1; shift
     fi
     [[ -n $remote ]] || error "No remote specified"
-    info "⚙️ [$remote] setting ~/.remocon.conf"
-    printf >>~/.remocon.conf 'remote=%q\n' "$remote"
+    info "⚙️  setting remocon.baseurl in ~/.gitconfig to \`$remote\`"
+    x git config --global remocon.baseurl "$remote"
 }
 
 # tether remote git repo(s) to local one
 remocon.put() {
     : ${remocon_put_keep_going:=false}
-    [[ $# -gt 0 ]] || set -- "$remote"
+    [[ $# -gt 0 ]] || set -- "$remote"  # TODO $remotes (i.e., `git config --get-all remocon.remote`)
     local num_put_failed=0
     for remote; do
         remocon._parse_remote
