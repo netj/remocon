@@ -351,6 +351,7 @@ remocon._parse_config() {
     @q declare -g -- "PS4=$ps4"
 
     # other $remocon_* / remocon.* git configs
+    # TODO instead of eagerly loading config values, get infrequently used values on demand
     _config_default_value_if_not_from_env_or_git_config() {
         @q declare -g -- "$1=${!1:-$(git config --get "remocon.${1#remocon_}" || echo "$2")}"
     }
