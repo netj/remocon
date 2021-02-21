@@ -321,7 +321,8 @@ remocon._parse_config() {
         ! declare -p remote_override &>/dev/null || remote=$remote_override
 
         ! [[ -e "$conf" && -n "$remote" ]] ||
-            warning "$conf: DEPRECATED! PLEASE MIGRATE TO: git config --global remocon.baseurl $(@q "$remote")"
+            warning "$conf: DEPRECATED! PLEASE MIGRATE TO git config remocon.baseurl" \
+                    "BY RUNNING: remocon set $(@q "$remote")"
     fi
 
     # require remote= to be set
@@ -451,7 +452,7 @@ remocon.set() {
         local remote=$1; shift
     fi
     [[ -n $remote ]] || error "No remote specified"
-    info "⚙️  setting remocon.baseurl in ~/.gitconfig to \`$remote\`"
+    info "⚙️  setting git config remocon.baseurl (in ~/.gitconfig) to [$remote]"
     x git config --global remocon.baseurl "$remote"
 }
 
