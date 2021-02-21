@@ -303,8 +303,6 @@ remocon._parse_config() {
         :
     elif remote=$(git config --get remocon.remote); then
         :
-    elif remote=$(git config --get remocon.baseurl); then
-        :
     else  # fallback to legacy behavior for now, finding remocon.conf
         # TODO deprecate .remocon.conf
 
@@ -321,7 +319,7 @@ remocon._parse_config() {
         ! declare -p remote_override &>/dev/null || remote=$remote_override
 
         ! [[ -e "$conf" && -n "$remote" ]] ||
-            warning "$conf: DEPRECATED! PLEASE MIGRATE TO git config remocon.baseurl" \
+            warning "$conf: DEPRECATED! PLEASE MIGRATE TO git config remocon.remote" \
                     "BY RUNNING: remocon set $(@q "$remote")"
     fi
 
@@ -435,7 +433,11 @@ remocon._parse_remote() {
 remocon.remote() { echo "$remote"; }
 remocon.remote_repo() { echo "$remote_host:$remote_repo"; }
 remocon.remote_workdir() { echo "$remote_host:$remote_workdir"; }
-remocon.remotes() { git config --get-all remocon.remote || echo "$remote"; }
+remocon.remotes() {
+    git config --get-all --local  remocon.remote ||
+    git config --get-all          remocon.remote ||
+    echo "$remote"
+}
 
 # set up ~/.remocon.conf
 remocon.set() {
@@ -452,8 +454,8 @@ remocon.set() {
         local remote=$1; shift
     fi
     [[ -n $remote ]] || error "No remote specified"
-    info "⚙️  setting git config remocon.baseurl (in ~/.gitconfig) to [$remote]"
-    x git config --global remocon.baseurl "$remote"
+    info "⚙️  setting git config remocon.remote (in ~/.gitconfig) to [$remote]"
+    x git config --global remocon.remote "$remote"
 }
 
 # tether remote git repo(s) to local one
