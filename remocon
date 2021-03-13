@@ -324,7 +324,7 @@ remocon._parse_config() {
     fi
 
     # require remote= to be set
-    [[ -n ${remote:=} || ${handler:-} = remocon.set ]] || error "No remote configured. Please run: remocon set"
+    [[ -n ${remote:=} ]] || error "No remote configured. Please run: remocon set"
 
     # parse remote
     remocon._parse_remote
@@ -455,7 +455,7 @@ remocon.set() {
         local remote=$1; shift
     fi
     [[ -n $remote ]] || error "No remote specified"
-    info "⚙️  setting remocon.remote to [$(@q "$remote")] in git config $(@q "$@")"
+    info "⚙️  setting remocon.remote to [$(@q "$remote")] in git config $(@q "$@" </dev/null)"
     x git config "$@" remocon.remote "$remote"
 }
 
@@ -597,7 +597,7 @@ remocon() {
     handler="remocon.$cmd"
     type "$handler" &>/dev/null ||
         error "$cmd: No such command.  Command must be one of: set, put, run, get, prg, or rec"
-    case $cmd in _*|version) ;; *) remocon._init ;; esac  # common prep for normal commands
+    case $cmd in _*|version|set) ;; *) remocon._init ;; esac  # common prep for normal commands
     "$handler" "$@"
 }
 
