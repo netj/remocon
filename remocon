@@ -105,10 +105,10 @@ rbc() {
     local _rbc_decls
     _rbc_decls=$(declarationsFor "$@")
     set -- \
-        "set -euo pipefail" \
-        "cd" \
-        "mkdir -p $(@q "$_rbc_workdir")" \
-        "cd $(@q "$_rbc_workdir")" \
+        "builtin set -euo pipefail" \
+        "builtin cd" \
+        "command mkdir -p $(@q "$_rbc_workdir")" \
+        "builtin cd $(@q "$_rbc_workdir")" \
         "PS4=$(@q "$(x_prefix_for_remote "$_rbc_hostworkdir")")" \
         "$_rbc_decls" \
         "$_rbc_fn"
