@@ -174,7 +174,8 @@ remocon.dup() {
         declare -p commit branch
     }
     local commit branch
-    eval "$(rbc "$src_hostpath" _remocon_read_git_HEAD)"
+    REPLY=$(rbc "$src_hostpath" _remocon_read_git_HEAD)
+    eval "$REPLY"
     _remocon_git_init() {
         [[ -e .git ]] || x git init
         # lift some git config to allow push
