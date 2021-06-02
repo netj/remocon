@@ -239,6 +239,7 @@ remocon.dup() {
             x git apply --binary -R "$patch" || x git stash
             x mv -f "$patch"{,~}
         fi
+        git rev-parse refs/heads/$branch >/dev/null
         if git rev-parse HEAD &>/dev/null; then
             # preserve any outstanding/untethered changes
             git diff --quiet --exit-code HEAD -- || x git stash
