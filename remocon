@@ -194,9 +194,9 @@ remocon.dup() {
                 x git remote remove "$remote_name"
                 x git remote add "$remote_name" "$dst_host:$dst_dir"
             }
-        x silently git push -q -f "$remote_name" HEAD:"$branch" || {
+        x silently env GIT_LFS_SKIP_PUSH=${GIT_LFS_SKIP_PUSH-1} git push -q -f "$remote_name" HEAD:"$branch" || {
             rbc "$dst_hostpath" _remocon_git_init
-            x git push -f "$remote_name" HEAD:"$branch"
+            x env GIT_LFS_SKIP_PUSH=${GIT_LFS_SKIP_PUSH-1} git push -f "$remote_name" HEAD:"$branch"
         }
         # TODO transfer local git config to $dst_hostpath
     }
