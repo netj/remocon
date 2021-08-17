@@ -302,10 +302,11 @@ remocon._parse_config() {
     (
     {
     if [[ -n "${remote:-}" ]]; then
-        :
+        remote_from=env
     elif remote=$(git config --get remocon.remote); then
-        :
+        remote_from=git-config
     else  # fallback to legacy behavior for now, finding remocon.conf
+        remote_from=remocon.conf
         # TODO deprecate .remocon.conf
 
         # find closest .remocon.conf
@@ -347,6 +348,7 @@ remocon._parse_config() {
         remote_host \
         remote_repo \
         remote_workdir \
+        remote_from \
         #
     do @q declare -g -- "$v=${!v:-}"
     done
@@ -437,9 +439,14 @@ remocon.remote() { echo "$remote"; }
 remocon.remote_repo() { echo "$remote_host:$remote_repo"; }
 remocon.remote_workdir() { echo "$remote_host:$remote_workdir"; }
 remocon.remotes() {
-    git config --get-all --local  remocon.remote ||
-    git config --get-all          remocon.remote ||
-    echo "$remote"
+    case $remote_from in
+        env|remocon.conf)
+            echo "$remote"
+            ;;
+        git-config|*)
+            git config --get-all --local  remocon.remote ||
+            git config --get-all          remocon.remote
+    esac
 }
 
 # set up git config remocon.remote
