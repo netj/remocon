@@ -286,8 +286,9 @@ remocon.dup() {
 
 remocon._init() {
     ${_remocon_init:-false} || {
-        eval "$(remocon._parse_config)"
-        remocon._setup_ssh_booster
+        local s
+        s=$(remocon._parse_config); eval "$s"
+        s=$(remocon._setup_ssh_booster); eval "$s"
         # break the ssh connection when interrupted, e.g., ControlPath can get stale
         trap 'x ssh "$remote_host" -O stop' INT
         declare -g -r _remocon_init=true
