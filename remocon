@@ -181,6 +181,7 @@ remocon.dup() {
         # lift some git config to allow push
         x git config receive.denyCurrentBranch ignore
         x git config receive.shallowUpdate true
+        [[ -z "${GIT_REMOTE_ORIGIN_URL:-}" ]] || x git config remote.origin.url "$GIT_REMOTE_ORIGIN_URL"
     }
     _remocon_git_push() {
         # running git pull from $src_hostpath
@@ -199,6 +200,7 @@ remocon.dup() {
             x env GIT_LFS_SKIP_PUSH=${GIT_LFS_SKIP_PUSH-1} git push -f "$remote_name" HEAD:"$branch"
         }
         # TODO transfer local git config to $dst_hostpath
+        rbc "$dst_hostpath" _remocon_git_init GIT_REMOTE_ORIGIN_URL=$(git config remote.origin.url)
     }
     _remocon_git_fetch() {
         # running git fetch from $dst_hostpath
