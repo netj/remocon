@@ -181,7 +181,12 @@ remocon.dup() {
         # lift some git config to allow push
         x git config receive.denyCurrentBranch ignore
         x git config receive.shallowUpdate true
-        [[ -z "${GIT_REMOTE_ORIGIN_URL:-}" ]] || x git config remote.origin.url "$GIT_REMOTE_ORIGIN_URL"
+    }
+    _remocon_git_config_dump() {
+      for c; do @q x git config "$c" "$(git config "$c")"; done
+    }
+    _remocon_git_config_load() {
+      source /dev/stdin
     }
     _remocon_git_push() {
         # running git pull from $src_hostpath
@@ -199,8 +204,12 @@ remocon.dup() {
             rbc "$dst_hostpath" _remocon_git_init
             x env GIT_LFS_SKIP_PUSH=${GIT_LFS_SKIP_PUSH-1} git push -f "$remote_name" HEAD:"$branch"
         }
-        # TODO transfer local git config to $dst_hostpath
-        rbc "$dst_hostpath" _remocon_git_init GIT_REMOTE_ORIGIN_URL=$(git config remote.origin.url)
+        # transfer some critical local git config to $dst_hostpath
+        _remocon_git_config_dump \
+          user.name \
+          user.email \
+          remote.origin.url \
+        | rbc "$dst_hostpath" _remocon_git_config_load
     }
     _remocon_git_fetch() {
         # running git fetch from $dst_hostpath
@@ -227,7 +236,7 @@ remocon.dup() {
         # need to git fetch if dst is localhost since it's not reachable for git push from src
         rbc "$dst_hostpath" _remocon_git_fetch remote_name src_hostpath branch _remocon_git_init
     else
-        rbc "$src_hostpath" _remocon_git_push remote_name dst_hostpath branch _remocon_git_init
+        rbc "$src_hostpath" _remocon_git_push remote_name dst_hostpath branch _remocon_git_init _remocon_git_config_dump _remocon_git_config_load
     fi
     ########################################
     _actually_rm_files_deleted_from_git_index_that_come_from() {
