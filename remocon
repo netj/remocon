@@ -390,7 +390,7 @@ remocon._setup_ssh_booster() {
     sshBoosterOpts=(
         # share an ssh connection across invocation
         -o ControlMaster=auto
-        -o ControlPath="/tmp/remocon-$USER.sock-%r@%h:%p"
+        -o ControlPath="/tmp/remocon-$USER.sock-%C"  # NOTE r@%h:%p can get too long for a named socket file
         -o ControlPersist=600
         # forward agent
         -A
