@@ -55,10 +55,11 @@ install -m a=r remocon-completion.bash /usr/local/etc/bash_completion.d/
 # Use the `set` command interactively:
 $ remocon set
 📡 Enter a remote host and path prefix to use, e.g.:
-    user@example.org:tmp/repos       to put a clone of local git work tree 'foo' under 'tmp/repos/foo', or 
+    user@example.org:tmp/repos/      to put a clone of local git work tree 'foo' under 'tmp/repos/foo', or 
+    user@example.org:tmp/repos/bar   to put a clone of local git work tree 'foo' under 'tmp/repos/bar', or 
     example.org or user@example.org  to put all remote clones on the home dir.
->>> user@somewhere.org:some/path
-📡 [user@somewhere.org:some/path] ⚙️ setting ~/.remocon.conf
+>>> user@somewhere.org:some/path/
+📡 [user@somewhere.org:some/path/] ⚙️ setting ~/.remocon.conf
 ```
 
 ```bash
@@ -70,7 +71,7 @@ $ remocon set example.org
 ```bash
 # Or edit the configuration file directly:
 $ vim ~/.remocon.conf
-remote=user@somewhere.org:some/path
+remote=user@somewhere.org:some/path/
 remote=example.org
 ```
 

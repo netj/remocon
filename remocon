@@ -428,11 +428,19 @@ remocon._parse_remote() {
         # sets $remote_host and $remote_repo for given $remote
         : ${local_repo_basename:=$(basename "$(git rev-parse --show-toplevel)")}
         remote_host="${remote%%:*}"
-        local remote_repo_root
-        remote_repo_root=${remote#$remote_host}
-        remote_repo_root=${remote_repo_root#:}
-        # use local git work tree's basename and keep it under given remote_repo_root dir
-        remote_repo="${remote_repo_root:+$remote_repo_root/}$local_repo_basename"
+        local remote_path
+        remote_path=${remote#$remote_host}
+        remote_path=${remote_path#:}
+        case $remote_path in
+            ""|*/)
+                # if no path was given (home dir) or there's a trailing slash, treat it like a remote_repo_root
+                # use local git work tree's basename and keep it under given remote_repo_root dir
+                local remote_repo_root=$remote_path
+                remote_repo="$remote_repo_root$local_repo_basename"
+                ;;
+            *) # otherwise, the given path is the path to the remote repo
+                remote_repo=$remote_path
+        esac
         remote_name="remocon/${remote//[^A-Za-z0-9._\/-]/-}"
     fi
     # sanity checks
