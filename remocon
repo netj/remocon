@@ -245,6 +245,7 @@ remocon.dup() {
         [[ $# -eq 0 ]] || x rm -f "$@"
     }
     _remocon_reset_to_HEAD() {
+        local patch="$(git rev-parse --git-dir)/$patch_name"
         # reverse any previous patch for tethering
         if [[ -s "$patch" ]]; then
             x git apply --binary -R "$patch" || x git stash
@@ -265,6 +266,7 @@ remocon.dup() {
     }
     _remocon_make_patch() { x git diff --full-index --binary $for; }
     _remocon_apply_patch() {
+        local patch="$(git rev-parse --git-dir)/$patch_name"
         tee "$patch" >/dev/null
         # with the same outstanding changes on top of the current commit
         ! [[ -s "$patch" ]] || x git apply --binary --apply --stat --cached "$patch"
@@ -274,22 +276,21 @@ remocon.dup() {
         _actually_rm_files_deleted_from_git_index_that_come_from HEAD
     }
     _remocon_apply_patch_index() {
+        local patch="$(git rev-parse --git-dir)/$patch_name"
         tee "$patch" >/dev/null
         x git reset --quiet  # (resetting the git index first to apply the patch for locally staged changes)
         ! [[ -s "$patch" ]] || x git apply --binary --apply --cached "$patch"
     }
     # bring destination to the current commit
-    local gitdir
-    gitdir=$(git rev-parse --git-dir)
-    local patch="$gitdir"/remocon.patch
-    rbc "$dst_hostpath" _remocon_reset_to_HEAD branch commit patch _actually_rm_files_deleted_from_git_index_that_come_from || return $?
+    local patch_name=remocon.patch
+    rbc "$dst_hostpath" _remocon_reset_to_HEAD branch commit patch_name _actually_rm_files_deleted_from_git_index_that_come_from || return $?
     # send staged and unstaged changes
     rbc "$src_hostpath" _remocon_make_patch for=HEAD |
-    rbc "$dst_hostpath" _remocon_apply_patch patch _actually_rm_files_deleted_from_git_index_that_come_from || return $?
+    rbc "$dst_hostpath" _remocon_apply_patch patch_name _actually_rm_files_deleted_from_git_index_that_come_from || return $?
     # replicate staged changes AKA .git/index
-    local patch="$gitdir"/remocon-index.patch
+    local patch_name=remocon-index.patch
     rbc "$src_hostpath" _remocon_make_patch for=--cached |
-    rbc "$dst_hostpath" _remocon_apply_patch_index patch || return $?
+    rbc "$dst_hostpath" _remocon_apply_patch_index patch_name || return $?
 }
 
 ################################################################################
@@ -428,7 +429,7 @@ remocon._parse_remote() {
         remote_name=$remote
     else  # treat $remote as [user@]host[:path] for a $remote_repo_root
         # sets $remote_host and $remote_repo for given $remote
-        : ${local_repo_basename:=$(basename "$(git rev-parse --show-toplevel)")}
+        : ${local_repo_basename:=$(basename "$(cd "$(git rev-parse --git-common-dir)/.." && pwd)")}
         remote_host="${remote%%:*}"
         local remote_path
         remote_path=${remote#$remote_host}
